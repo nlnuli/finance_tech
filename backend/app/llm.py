@@ -39,7 +39,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 # print(response.content)
 
 @lru_cache(maxsize=3)
-def create_llm() -> ChatOpenAI:
+def get_llm() -> ChatOpenAI:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set in backend/.env")
