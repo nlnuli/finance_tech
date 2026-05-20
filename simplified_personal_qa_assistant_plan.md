@@ -1210,7 +1210,7 @@ frontend/src/components/ChatPage.tsx
 - 页面能显示基础聊天 UI
 - 前端能成功请求后端健康检查接口
 
-### 3. 初始化 LangChain LLM
+### 3. 初始化 LangChain LLM -> 已完成
 
 需要实现：
 
@@ -1238,14 +1238,14 @@ backend/app/llm.py
 - 后端可以调用一次 LLM 并返回完整文本
 - 模型 API key 或 base URL 由环境变量控制
 
-### 4. 初始化 LangGraph checkpointer
+### 4. 初始化 LangGraph checkpointer -> 完成
 
 需要实现：
 
 - 创建 `checkpoint.py`
 - 选择第一版 checkpointer
 - 本地学习阶段可以用 MemorySaver 或 SQLite
-- 如果直接面向生产，可以用 Postgres checkpointer
+- 后续切换到mysql中
 - 提供统一函数 `get_checkpointer()`
 
 建议接口：
@@ -1266,7 +1266,7 @@ backend/app/checkpoint.py
 - LangGraph graph 编译时可以传入 checkpointer
 - 同一个 `thread_id` 多次调用时状态可以累积
 
-### 5. 实现最小 Chat Graph
+### 5. 实现最小 Chat Graph -> 完成
 
 需要实现：
 
@@ -1295,7 +1295,7 @@ backend/app/graph_chat.py
 - 输入 HumanMessage，输出 AIMessage
 - 使用相同 thread_id 时，LangGraph 能保存消息状态
 
-### 6. 实现 SSE 流式 chat
+### 6. 实现 SSE 流式 chat -> 完成
 
 需要实现：
 

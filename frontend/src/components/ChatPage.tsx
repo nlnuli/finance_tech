@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { getHealth } from "../api";
+import { useChatStream } from "../hooks/useChatStream";
 
 type Message = {
   id: number;
@@ -20,6 +21,8 @@ export function ChatPage() {
   const [health, setHealth] = useState("checking");
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [draft, setDraft] = useState("");
+  const [threadId, setThreadId] = useState<string>();
+  const { isLoading, sendMessage } = useChatStream();
 
   useEffect(() => {
     getHealth()
@@ -31,18 +34,45 @@ export function ChatPage() {
     event.preventDefault();
 
     const content = draft.trim();
-    if (!content) return;
+    if (!content || isLoading) return;
+
+    const userMessageId = Date.now();
+    const assistantMessageId = userMessageId + 1;
 
     setMessages((current) => [
       ...current,
-      { id: Date.now(), role: "user", content },
-      {
-        id: Date.now() + 1,
-        role: "assistant",
-        content: "前端骨架已就绪，后续可以在这里接入真正的问答接口。",
-      },
+      { id: userMessageId, role: "user", content },
+      { id: assistantMessageId, role: "assistant", content: "" },
     ]);
     setDraft("");
+
+    void sendMessage({
+      message: content,
+      threadId,
+      onMetadata: (data) => {
+        if (data.thread_id) {
+          setThreadId(data.thread_id);
+        }
+      },
+      onToken: (token) => {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantMessageId
+              ? { ...message, content: message.content + token }
+              : message,
+          ),
+        );
+      },
+      onError: (message) => {
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === assistantMessageId
+              ? { ...item, content: `请求失败：${message}` }
+              : item,
+          ),
+        );
+      },
+    });
   }
 
   return (
@@ -59,7 +89,7 @@ export function ChatPage() {
           {messages.map((message) => (
             <div className={`message ${message.role}`} key={message.id}>
               <span>{message.role === "assistant" ? "Assistant" : "You"}</span>
-              <p>{message.content}</p>
+              <p>{message.content || "..."}</p>
             </div>
           ))}
         </div>
@@ -70,8 +100,11 @@ export function ChatPage() {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="输入问题..."
+            disabled={isLoading}
           />
-          <button type="submit">发送</button>
+          <button type="submit" disabled={isLoading}>
+            {isLoading ? "生成中" : "发送"}
+          </button>
         </form>
       </section>
     </main>

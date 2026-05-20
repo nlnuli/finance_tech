@@ -48,5 +48,5 @@ def get_llm() -> ChatOpenAI:
         model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
         temperature=0.7,
         api_key=api_key,
+        streaming=True,
     )
-

@@ -30,33 +30,39 @@ backend/app/graph_chat.py
 - 使用相同 thread_id 时，LangGraph 能保存消息状态
 """
 
-from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, AIMessage
-from langgraph.graph import StateGraph, START, END
-
-from checkpoint import get_checkpointer
-from llm import get_llm
-
+import asyncio
 from typing import Annotated, TypedDict
+
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+
+try:
+    from .checkpoint import get_checkpointer
+    from .llm import get_llm
+except ImportError:
+    from checkpoint import get_checkpointer
+    from llm import get_llm
+
 
 # 定义 ChatState
 class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
+
 # 定义 ChatNode
-class ChatNode():
+class ChatNode:
     def __init__(self):
         self.llm = get_llm()
-    def __call__(self, state: State) -> State:
+
+    async def __call__(self, state: State, config: RunnableConfig) -> State:
         # 调用 LLM 生成回复
-        response = self.llm.invoke(state["messages"])
+        response = await self.llm.ainvoke(state["messages"], config=config)
         print(f"LLM response: {response.content}")
         # 返回一个新状态：
-        return {
-            "messages": [response]
-        }
-    
-       
+        return {"messages": [response]}
+
 
 builder = StateGraph(State)
 
@@ -69,14 +75,14 @@ graph = builder.compile(checkpointer=get_checkpointer())
 # 测试调用
 if __name__ == "__main__":
     config = {
-       "configurable": {
-             "thread_id": "graph_chat",
-       }
+        "configurable": {
+            "thread_id": "graph_chat",
+        }
     }
     initial_state: State = {
-        "messages": [SystemMessage(content="Your are a helpful assistant!")]
+        "messages": [SystemMessage(content="You are a helpful assistant!")]
     }
     initial_state["messages"].append(HumanMessage(content="What is the capital of France?"))
-    final_state = graph.invoke(initial_state, config=config)
+    final_state = asyncio.run(graph.ainvoke(initial_state, config=config))
 
     print(f"Final state: {final_state}")
