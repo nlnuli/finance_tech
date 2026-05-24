@@ -1,10 +1,49 @@
 from fastapi import APIRouter, HTTPException
+from langchain_core.messages import BaseMessage
 
+from .graph_chat import graph
 from .model import storage
 from .schemas import CreateThreadRequest, MessageResponse, ThreadResponse
 
 
 router = APIRouter(prefix="/api/threads", tags=["threads"])
+
+
+def get_graph_config(thread_id: str) -> dict:
+    return {"configurable": {"thread_id": thread_id}}
+
+
+def serialize_message(message: BaseMessage) -> dict:
+    return {
+        "type": message.type,
+        "content": message.content,
+    }
+
+
+def serialize_values(values: dict) -> dict:
+    result = {}
+
+    for key, value in values.items():
+        if key == "messages":
+            result[key] = [serialize_message(message) for message in value]
+        else:
+            result[key] = value
+
+    return result
+
+
+def serialize_state(state) -> dict:
+    return {
+        "values": serialize_values(state.values or {}),
+        "next": list(state.next or []),
+        "metadata": state.metadata,
+    }
+
+
+def ensure_thread_exists(thread_id: str) -> None:
+    thread = storage.get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
 
 
 @router.post("", response_model=ThreadResponse)
@@ -19,8 +58,25 @@ def list_threads() -> list[dict]:
 
 @router.get("/{thread_id}/messages", response_model=list[MessageResponse])
 def list_thread_messages(thread_id: str) -> list[dict]:
-    thread = storage.get_thread(thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
+    ensure_thread_exists(thread_id)
 
     return storage.list_messages(thread_id)
+
+
+@router.get("/{thread_id}/state")
+async def get_thread_state(thread_id: str) -> dict:
+    ensure_thread_exists(thread_id)
+
+    state = await graph.aget_state(get_graph_config(thread_id))
+    return serialize_state(state)
+
+
+@router.get("/{thread_id}/history")
+async def get_thread_history(thread_id: str) -> list[dict]:
+    ensure_thread_exists(thread_id)
+
+    history = []
+    async for state in graph.aget_state_history(get_graph_config(thread_id)):
+        history.append(serialize_state(state))
+
+    return history

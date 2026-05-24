@@ -21,3 +21,18 @@ CREATE TABLE IF NOT EXISTS messages (
         ON DELETE CASCADE
 )
 """
+
+
+CREATE_FILES_TABLE = """
+CREATE TABLE IF NOT EXISTS files (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    assistant_id VARCHAR(64) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    saved_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    content_type VARCHAR(100),
+    size_bytes BIGINT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_files_assistant_id (assistant_id)
+)
+"""

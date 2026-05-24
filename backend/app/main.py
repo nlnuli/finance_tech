@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from .config import get_settings
 from .stream import router as chat_router
 from .thread_routes import router as thread_router
+from .uploads import router as upload_router
 
 # 获取对应设置
 settings = get_settings()
@@ -25,6 +26,7 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(thread_router)
+app.include_router(upload_router)
 
 
 @app.exception_handler(RequestValidationError)

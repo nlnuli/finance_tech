@@ -114,3 +114,57 @@ def list_messages(thread_id: str) -> list[dict]:
             return cursor.fetchall()
     finally:
         connection.close()
+
+
+def save_file_record(
+    assistant_id: str,
+    original_name: str,
+    saved_name: str,
+    file_path: str,
+    content_type: Optional[str],
+    size_bytes: int,
+) -> dict:
+    prepare_database()
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO files (
+                    assistant_id,
+                    original_name,
+                    saved_name,
+                    file_path,
+                    content_type,
+                    size_bytes
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    assistant_id,
+                    original_name,
+                    saved_name,
+                    file_path,
+                    content_type,
+                    size_bytes,
+                ),
+            )
+            file_id = cursor.lastrowid
+        connection.commit()
+    finally:
+        connection.close()
+
+    return get_file_record(file_id)
+
+
+def get_file_record(file_id: int) -> Optional[dict]:
+    prepare_database()
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM files WHERE id = %s", (file_id,))
+            return cursor.fetchone()
+    finally:
+        connection.close()

@@ -5,7 +5,7 @@ import pymysql
 from dotenv import load_dotenv
 from pymysql.cursors import DictCursor
 
-from .models import CREATE_MESSAGES_TABLE, CREATE_THREADS_TABLE
+from .models import CREATE_FILES_TABLE, CREATE_MESSAGES_TABLE, CREATE_THREADS_TABLE
 
 
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
@@ -49,6 +49,7 @@ def init_database() -> None:
             cursor.execute(f"USE `{database_name}`")
             cursor.execute(CREATE_THREADS_TABLE)
             cursor.execute(CREATE_MESSAGES_TABLE)
+            cursor.execute(CREATE_FILES_TABLE)
         connection.commit()
     finally:
         connection.close()
