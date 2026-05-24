@@ -1329,7 +1329,7 @@ frontend/src/components/ChatPage.tsx
 - 用户输入问题后，前端能逐字或逐块显示回答
 - 流结束后 loading 状态消失
 
-### 7. 加数据库 thread/message 保存
+### 7. 加数据库 thread/message 保存 ->完成
 
 需要实现：
 
@@ -1343,9 +1343,9 @@ frontend/src/components/ChatPage.tsx
 建议文件：
 
 ```text
-backend/app/db.py
-backend/app/models.py
-backend/app/storage.py
+backend/app/model/db.py
+backend/app/model/models.py
+backend/app/model/storage.py
 backend/app/schemas.py
 ```
 
@@ -1362,7 +1362,7 @@ GET /api/threads/{thread_id}/messages
 - 创建 thread 后数据库有记录
 - 发送消息后 message 表有 user 和 assistant 两条消息
 
-### 8. 前端支持历史消息恢复
+### 8. 前端支持历史消息恢复 -> 完成
 
 需要实现：
 

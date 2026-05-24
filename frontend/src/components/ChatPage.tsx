@@ -1,34 +1,51 @@
 import { FormEvent, useEffect, useState } from "react";
 
-import { getHealth } from "../api";
+import { ApiMessage, getHealth } from "../api";
 import { useChatStream } from "../hooks/useChatStream";
+import { useMessages } from "../hooks/useMessages";
+import { useThreads } from "../hooks/useThreads";
+import { ChatMessage, MessageList } from "./MessageList";
+import { ThreadList } from "./ThreadList";
 
-type Message = {
-  id: number;
-  role: "assistant" | "user";
-  content: string;
-};
-
-const initialMessages: Message[] = [
-  {
-    id: 1,
-    role: "assistant",
-    content: "你好，我是你的个人问答助手。可以先输入一个问题试试。",
-  },
-];
+function toChatMessage(message: ApiMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+  };
+}
 
 export function ChatPage() {
   const [health, setHealth] = useState("checking");
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [threadId, setThreadId] = useState<string>();
+
   const { isLoading, sendMessage } = useChatStream();
+  const { threads, isLoadingThreads, loadThreads } = useThreads();
+  const { isLoadingMessages, loadMessages } = useMessages();
 
   useEffect(() => {
     getHealth()
       .then((data) => setHealth(data.status))
       .catch(() => setHealth("offline"));
-  }, []);
+
+    void loadThreads();
+  }, [loadThreads]);
+
+  function handleNewThread() {
+    setThreadId(undefined);
+    setMessages([]);
+    setDraft("");
+  }
+
+  async function handleSelectThread(selectedThreadId: string) {
+    setThreadId(selectedThreadId);
+    setDraft("");
+
+    const data = await loadMessages(selectedThreadId);
+    setMessages(data.map(toChatMessage));
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,41 +89,55 @@ export function ChatPage() {
           ),
         );
       },
+      onEnd: () => {
+        void loadThreads();
+      },
     });
   }
 
   return (
     <main className="page">
-      <section className="chat-shell">
-        <header className="chat-header">
-          <div>
-            <h1>Personal QA Assistant</h1>
-            <p>Backend health: {health}</p>
-          </div>
-        </header>
+      <div className="app-layout">
+        <ThreadList
+          threads={threads}
+          activeThreadId={threadId}
+          isLoading={isLoadingThreads}
+          onNewThread={handleNewThread}
+          onSelectThread={(selectedThreadId) => {
+            void handleSelectThread(selectedThreadId);
+          }}
+        />
 
-        <div className="messages" aria-live="polite">
-          {messages.map((message) => (
-            <div className={`message ${message.role}`} key={message.id}>
-              <span>{message.role === "assistant" ? "Assistant" : "You"}</span>
-              <p>{message.content || "..."}</p>
+        <section className="chat-shell">
+          <header className="chat-header">
+            <div>
+              <h1>Personal QA Assistant</h1>
+              <p>Backend health: {health}</p>
             </div>
-          ))}
-        </div>
+          </header>
 
-        <form className="composer" onSubmit={handleSubmit}>
-          <input
-            aria-label="Message"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="输入问题..."
-            disabled={isLoading}
-          />
-          <button type="submit" disabled={isLoading}>
-            {isLoading ? "生成中" : "发送"}
-          </button>
-        </form>
-      </section>
+          {isLoadingMessages ? (
+            <div className="empty-chat">加载历史消息中...</div>
+          ) : messages.length === 0 ? (
+            <div className="empty-chat">开始一个新问题，或从左侧选择历史对话。</div>
+          ) : (
+            <MessageList messages={messages} />
+          )}
+
+          <form className="composer" onSubmit={handleSubmit}>
+            <input
+              aria-label="Message"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="输入问题..."
+              disabled={isLoading}
+            />
+            <button type="submit" disabled={isLoading}>
+              {isLoading ? "生成中" : "发送"}
+            </button>
+          </form>
+        </section>
+      </div>
     </main>
   );
 }
