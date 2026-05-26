@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 
-from .vectorstore import similarity_search
+from ..vectorstore import similarity_search
 
 
 def format_search_results(results: list[dict]) -> str:

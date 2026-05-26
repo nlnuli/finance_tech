@@ -1525,7 +1525,7 @@ backend/app/rag.py
 - 手动调用 `rag_search.invoke(...)` 能返回相关文件片段
 - 工具 schema 能被 LLM 识别
 
-### 15. 抽象 TOOL_REGISTRY -> 
+### 15. 抽象 TOOL_REGISTRY 
 
 需要实现：
 
