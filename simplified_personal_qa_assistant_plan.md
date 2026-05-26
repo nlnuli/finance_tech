@@ -1503,7 +1503,7 @@ mode=chat 且 rag_enabled=true
 - 上传文件后提问，回答能使用文件内容
 - 没有相关内容时，回答不会硬编
 
-### 14. 把 RAG search 注册成 LangChain tool
+### 14. 把 RAG search 注册成 LangChain tool -> 完成
 
 需要实现：
 
@@ -1525,7 +1525,7 @@ backend/app/rag.py
 - 手动调用 `rag_search.invoke(...)` 能返回相关文件片段
 - 工具 schema 能被 LLM 识别
 
-### 15. 抽象 TOOL_REGISTRY
+### 15. 抽象 TOOL_REGISTRY -> 
 
 需要实现：
 
