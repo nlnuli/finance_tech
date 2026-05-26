@@ -41,61 +41,14 @@ from langgraph.graph.message import add_messages
 try:
     from .checkpoint import get_checkpointer
     from .llm import get_llm
-    from .vectorstore import similarity_search
 except ImportError:
     from checkpoint import get_checkpointer
     from llm import get_llm
-    from vectorstore import similarity_search
 
 
 # 定义 ChatState
 class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
-    rag_enabled: bool
-
-
-def get_latest_user_message(messages: list[AnyMessage]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, HumanMessage):
-            return message.content
-    return ""
-
-
-def build_rag_system_message(query: str) -> SystemMessage:
-    results = similarity_search(query, assistant_id="default", k=4)
-
-    if not results:
-        return SystemMessage(
-            content=(
-                "You are a helpful assistant.\n"
-                "No relevant context was found in the uploaded files.\n"
-                "Do not invent file-based facts. If the user asks about uploaded "
-                "documents, say the uploaded files do not contain enough relevant "
-                "information."
-            )
-        )
-
-    context_parts = []
-    for index, item in enumerate(results, start=1):
-        metadata = item["metadata"]
-        context_parts.append(
-            f"[{index}] "
-            f"filename={metadata.get('filename')}, "
-            f"file_id={metadata.get('file_id')}, "
-            f"chunk_index={metadata.get('chunk_index')}\n"
-            f"{item['content']}"
-        )
-
-    context_text = "\n\n".join(context_parts)
-    return SystemMessage(
-        content=(
-            "You are a helpful assistant.\n"
-            "Use the retrieved context below to answer the user.\n"
-            "If the answer is not in the context, say the uploaded files do not "
-            "contain enough information.\n\n"
-            f"Retrieved context:\n\n{context_text}"
-        )
-    )
 
 
 # 定义 ChatNode
@@ -104,15 +57,8 @@ class ChatNode:
         self.llm = get_llm()
 
     async def __call__(self, state: State, config: RunnableConfig) -> State:
-        messages = state["messages"]
-
-        if state.get("rag_enabled"):
-            query = get_latest_user_message(messages)
-            rag_message = build_rag_system_message(query)
-            messages = [rag_message, *messages]
-
         # 调用 LLM 生成回复
-        response = await self.llm.ainvoke(messages, config=config)
+        response = await self.llm.ainvoke(state["messages"], config=config)
         print(f"LLM response: {response.content}")
         # 返回一个新状态：
         return {"messages": [response]}

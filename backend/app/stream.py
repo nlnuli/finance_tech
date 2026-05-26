@@ -4,14 +4,14 @@ from uuid import uuid4
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
 
-from .graph_chat import graph
+from .agent import ChatStrategy
 from .model.storage import ensure_thread, save_message
 from .schemas import ChatStreamRequest
 
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+chat_strategy = ChatStrategy()
 
 
 def make_sse_event(event_name: str, data: dict) -> str:
@@ -56,6 +56,19 @@ def get_text_from_graph_event(event: dict) -> str:
 
         return get_text_from_message_chunk(messages[-1])
 
+    if event_type == "on_chain_stream" and event.get("name") == "LangGraph":
+        data = event.get("data", {})
+        chunk = data.get("chunk", {})
+
+        if not isinstance(chunk, dict):
+            return ""
+
+        messages = chunk.get("messages", [])
+        if not messages:
+            return ""
+
+        return get_text_from_message_chunk(messages[-1])
+
     return ""
 
 
@@ -72,12 +85,10 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
         title = request.message[:50] if is_new_thread else None
         ensure_thread(thread_id, title=title)
         save_message(thread_id, "user", request.message)
+        graph, graph_input = chat_strategy.select_graph_input(request.message)
 
         async for graph_event in graph.astream_events(
-            {
-                "messages": [HumanMessage(content=request.message)],
-                "rag_enabled": request.rag_enabled,
-            },
+            graph_input,
             config={"configurable": {"thread_id": thread_id}},
             version="v2",
         ):

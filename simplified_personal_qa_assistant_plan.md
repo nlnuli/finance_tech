@@ -1525,7 +1525,7 @@ backend/app/rag.py
 - 手动调用 `rag_search.invoke(...)` 能返回相关文件片段
 - 工具 schema 能被 LLM 识别
 
-### 15. 抽象 TOOL_REGISTRY 
+### 15. 抽象 TOOL_REGISTRY  -> 完成
 
 需要实现：
 
@@ -1545,7 +1545,7 @@ backend/app/tools.py
 - 后端能列出所有可用工具
 - assistant 可以只启用部分工具
 
-### 16. 实现 calculator/current_time 工具
+### 16. 实现 calculator/current_time 工具 -> 完成
 
 需要实现：
 
@@ -1567,7 +1567,7 @@ backend/app/tools.py
 - 工具入参校验生效
 - 工具错误不会导致后端崩溃
 
-### 17. 实现 ReAct Graph
+### 17. 实现 ReAct Graph -> 完成
 
 需要实现：
 

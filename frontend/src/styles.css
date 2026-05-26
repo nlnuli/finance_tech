@@ -19,6 +19,30 @@ input {
   font: inherit;
 }
 
+.top-nav {
+  display: flex;
+  gap: 8px;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 16px 16px 0;
+}
+
+.top-nav button {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #cfd7e6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172033;
+  cursor: pointer;
+}
+
+.top-nav button.active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
 .page {
   min-height: 100vh;
   padding: 32px 16px;
@@ -262,9 +286,79 @@ input {
   cursor: not-allowed;
 }
 
+.tools-page {
+  width: min(1180px, 100%);
+  min-height: calc(100vh - 96px);
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid #d9dfeb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.tools-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e7ebf3;
+}
+
+.tools-header h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.tools-header p {
+  margin: 0;
+  color: #667085;
+  font-size: 14px;
+}
+
+.tool-list {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.tool-card {
+  padding: 16px;
+  border: 1px solid #e7ebf3;
+  border-radius: 8px;
+}
+
+.tool-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tool-card h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.tool-card span,
+.tool-card p {
+  color: #667085;
+  font-size: 14px;
+}
+
+.tool-card pre {
+  overflow-x: auto;
+  margin: 12px 0 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f5f7fb;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 @media (max-width: 640px) {
   .page {
     padding: 0;
+  }
+
+  .top-nav {
+    padding: 10px;
   }
 
   .app-layout {

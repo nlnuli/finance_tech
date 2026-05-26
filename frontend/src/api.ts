@@ -41,6 +41,13 @@ export type FileUploadResponse = {
   chunks: FileChunk[];
 };
 
+export type ToolInfo = {
+  type: string;
+  name: string;
+  description: string;
+  args_schema: Record<string, unknown>;
+};
+
 export async function getHealth(): Promise<HealthResponse> {
   const response = await fetch(`${API_BASE_URL}/health`);
 
@@ -86,6 +93,16 @@ export async function uploadFile(
 
   if (!response.ok) {
     throw new Error(`Upload file failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getTools(): Promise<ToolInfo[]> {
+  const response = await fetch(`${API_BASE_URL}/api/tools`);
+
+  if (!response.ok) {
+    throw new Error(`Load tools failed: ${response.status}`);
   }
 
   return response.json();
