@@ -1480,7 +1480,7 @@ backend/app/rag.py
 - 文件上传后 chunks 能写入向量库
 - 输入 query 可以检索出相关 chunks
 
-### 13. 实现 RAG 自动检索回答
+### 13. 实现 RAG 自动检索回答 -> 完成
 
 需要实现：
 

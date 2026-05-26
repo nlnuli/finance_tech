@@ -74,7 +74,10 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
         save_message(thread_id, "user", request.message)
 
         async for graph_event in graph.astream_events(
-            {"messages": [HumanMessage(content=request.message)]},
+            {
+                "messages": [HumanMessage(content=request.message)],
+                "rag_enabled": request.rag_enabled,
+            },
             config={"configurable": {"thread_id": thread_id}},
             version="v2",
         ):

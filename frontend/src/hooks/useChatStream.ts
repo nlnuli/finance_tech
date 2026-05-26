@@ -10,6 +10,7 @@ type StreamEvent = {
 type SendMessageOptions = {
   message: string;
   threadId?: string;
+  ragEnabled?: boolean;
   onMetadata?: (data: Record<string, string>) => void;
   onToken?: (token: string) => void;
   onMessage?: (content: string) => void;
@@ -52,6 +53,7 @@ export function useChatStream() {
         body: JSON.stringify({
           message: options.message,
           thread_id: options.threadId,
+          rag_enabled: options.ragEnabled ?? false,
         }),
       });
 

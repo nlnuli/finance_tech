@@ -21,6 +21,7 @@ export function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [threadId, setThreadId] = useState<string>();
+  const [ragEnabled, setRagEnabled] = useState(false);
 
   const { isLoading, sendMessage } = useChatStream();
   const { threads, isLoadingThreads, loadThreads } = useThreads();
@@ -67,6 +68,7 @@ export function ChatPage() {
     void sendMessage({
       message: content,
       threadId,
+      ragEnabled,
       onMetadata: (data) => {
         if (data.thread_id) {
           setThreadId(data.thread_id);
@@ -127,6 +129,15 @@ export function ChatPage() {
           )}
 
           <form className="composer" onSubmit={handleSubmit}>
+            <label className="rag-toggle">
+              <input
+                type="checkbox"
+                checked={ragEnabled}
+                onChange={(event) => setRagEnabled(event.target.checked)}
+                disabled={isLoading}
+              />
+              <span>RAG</span>
+            </label>
             <input
               aria-label="Message"
               value={draft}

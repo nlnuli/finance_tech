@@ -47,3 +47,4 @@ class FileUploadResponse(BaseModel):
 class ChatStreamRequest(BaseModel):
     message: str = Field(min_length=1)
     thread_id: Optional[str] = None
+    rag_enabled: bool = False

@@ -201,14 +201,31 @@ input {
 
 .composer {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
   gap: 10px;
   padding: 16px;
   border-top: 1px solid #e7ebf3;
   background: #fbfcff;
 }
 
-.composer input {
+.rag-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  color: #667085;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.rag-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.composer input:not([type="checkbox"]) {
   min-width: 0;
   height: 44px;
   padding: 0 14px;
@@ -217,11 +234,11 @@ input {
   outline: none;
 }
 
-.composer input:focus {
+.composer input:not([type="checkbox"]):focus {
   border-color: #4f7cff;
 }
 
-.composer input:disabled {
+.composer input:not([type="checkbox"]):disabled {
   background: #f1f4f9;
   color: #667085;
 }
