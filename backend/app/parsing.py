@@ -9,9 +9,63 @@ from pypdf import PdfReader
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx"}
 
 
+def is_mergeable_short_line(line: str) -> bool:
+    return len(line) <= 30 and not line.endswith((".", ":", ";", "?", "!"))
+
+
+def is_short_line(line: str) -> bool:
+    return len(line) <= 30
+
+
+def find_next_non_empty_line(lines: list[str], start_index: int) -> str:
+    for index in range(start_index, len(lines)):
+        stripped = lines[index].strip()
+        if stripped:
+            return stripped
+
+    return ""
+
+
+def fix_short_line_breaks(text: str) -> str:
+    lines = text.splitlines()
+    fixed_lines = []
+    short_line_buffer = []
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+
+        if not stripped:
+            next_line = find_next_non_empty_line(lines, index + 1)
+            if short_line_buffer and is_short_line(next_line):
+                continue
+
+            if short_line_buffer:
+                fixed_lines.append(" ".join(short_line_buffer))
+                short_line_buffer = []
+            fixed_lines.append("")
+            continue
+
+        if is_mergeable_short_line(stripped):
+            short_line_buffer.append(stripped)
+            continue
+
+        if short_line_buffer:
+            short_line_buffer.append(stripped)
+            fixed_lines.append(" ".join(short_line_buffer))
+            short_line_buffer = []
+        else:
+            fixed_lines.append(stripped)
+
+    if short_line_buffer:
+        fixed_lines.append(" ".join(short_line_buffer))
+
+    return "\n".join(fixed_lines)
+
+
 def clean_text(text: str) -> str:
     text = text.replace("\x00", "")
     text = re.sub(r"[\x01-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    text = fix_short_line_breaks(text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
