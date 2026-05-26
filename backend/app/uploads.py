@@ -7,6 +7,7 @@ from .model.storage import save_file_record
 from .parsing import parse_file
 from .rag import split_text_into_chunks
 from .schemas import FileUploadResponse
+from .vectorstore import add_chunks_to_vectorstore
 
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -50,6 +51,7 @@ async def upload_file(
         assistant_id=assistant_id,
         file_id=file_record["id"],
     )
+    add_chunks_to_vectorstore(chunks)
 
     return {
         "file": file_record,

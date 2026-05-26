@@ -20,6 +20,27 @@ export type ApiMessage = {
   created_at: string;
 };
 
+export type UploadedFile = {
+  id: number;
+  assistant_id: string;
+  original_name: string;
+  saved_name: string;
+  file_path: string;
+  content_type: string | null;
+  size_bytes: number;
+  created_at: string;
+};
+
+export type FileChunk = {
+  content: string;
+  metadata: Record<string, string | number>;
+};
+
+export type FileUploadResponse = {
+  file: UploadedFile;
+  chunks: FileChunk[];
+};
+
 export async function getHealth(): Promise<HealthResponse> {
   const response = await fetch(`${API_BASE_URL}/health`);
 
@@ -45,6 +66,26 @@ export async function getThreadMessages(threadId: string): Promise<ApiMessage[]>
 
   if (!response.ok) {
     throw new Error(`Load messages failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function uploadFile(
+  file: File,
+  assistantId = "default",
+): Promise<FileUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("assistant_id", assistantId);
+
+  const response = await fetch(`${API_BASE_URL}/api/files/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload file failed: ${response.status}`);
   }
 
   return response.json();

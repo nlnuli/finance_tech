@@ -1385,7 +1385,7 @@ frontend/src/components/MessageList.tsx
 - 刷新页面后，历史对话仍显示
 - 切换 thread 时显示对应 thread 的消息
 
-### 9. 实现 thread state/checkpoint 查询接口
+### 9. 实现 thread state/checkpoint 查询接口 --> 完成
 
 需要实现：
 
@@ -1413,7 +1413,7 @@ backend/app/main.py
 - 调用 state 接口能看到 LangGraph 当前状态
 - 同一个 thread_id 的 checkpoint 可被读取
 
-### 10. 加文件上传接口
+### 10. 加文件上传接口  --> 完成
 
 需要实现：
 
@@ -1436,7 +1436,7 @@ frontend/src/components/FileUpload.tsx
 - 前端能选择文件并上传
 - 后端能保存文件记录和原始文件
 
-### 11. 实现文件解析和切块
+### 11. 实现文件解析和切块 -> 完成
 
 需要实现：
 
@@ -1458,7 +1458,7 @@ backend/app/rag.py
 - 上传文件后可以得到 chunk 列表
 - 每个 chunk 有 `content`、`filename`、`assistant_id` 等 metadata
 
-### 12. 接入向量库
+### 12. 接入向量库（Qdrant）->完成
 
 需要实现：
 

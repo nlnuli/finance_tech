@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,17 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5173",
         ],
         alias="CORS_ORIGINS",
+    )
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    qdrant_url: Optional[str] = Field(default=None, alias="QDRANT_URL")
+    qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
+    qdrant_collection: str = Field(
+        default="finance_tech_chunks",
+        alias="QDRANT_COLLECTION",
+    )
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        alias="OPENAI_EMBEDDING_MODEL",
     )
 
     model_config = SettingsConfigDict(

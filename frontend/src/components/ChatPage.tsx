@@ -4,6 +4,7 @@ import { ApiMessage, getHealth } from "../api";
 import { useChatStream } from "../hooks/useChatStream";
 import { useMessages } from "../hooks/useMessages";
 import { useThreads } from "../hooks/useThreads";
+import { FileUpload } from "./FileUpload";
 import { ChatMessage, MessageList } from "./MessageList";
 import { ThreadList } from "./ThreadList";
 
@@ -114,6 +115,7 @@ export function ChatPage() {
               <h1>Personal QA Assistant</h1>
               <p>Backend health: {health}</p>
             </div>
+            <FileUpload />
           </header>
 
           {isLoadingMessages ? (
