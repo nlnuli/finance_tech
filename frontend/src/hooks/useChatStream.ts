@@ -14,6 +14,8 @@ type SendMessageOptions = {
   onMetadata?: (data: Record<string, string>) => void;
   onToken?: (token: string) => void;
   onMessage?: (content: string) => void;
+  onToolStart?: (data: Record<string, string>) => void;
+  onToolResult?: (data: Record<string, string>) => void;
   onError?: (message: string) => void;
   onEnd?: () => void;
 };
@@ -85,6 +87,12 @@ export function useChatStream() {
           }
           if (parsed.event === "message") {
             options.onMessage?.(parsed.data.content ?? "");
+          }
+          if (parsed.event === "tool_start") {
+            options.onToolStart?.(parsed.data);
+          }
+          if (parsed.event === "tool_result") {
+            options.onToolResult?.(parsed.data);
           }
           if (parsed.event === "error") {
             options.onError?.(parsed.data.message ?? "Unknown stream error");

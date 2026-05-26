@@ -5,7 +5,7 @@ import { useChatStream } from "../hooks/useChatStream";
 import { useMessages } from "../hooks/useMessages";
 import { useThreads } from "../hooks/useThreads";
 import { FileUpload } from "./FileUpload";
-import { ChatMessage, MessageList } from "./MessageList";
+import { ChatMessage, MessageItem, MessageList } from "./MessageList";
 import { ThreadList } from "./ThreadList";
 
 function toChatMessage(message: ApiMessage): ChatMessage {
@@ -16,9 +16,13 @@ function toChatMessage(message: ApiMessage): ChatMessage {
   };
 }
 
+function createClientMessageId() {
+  return Date.now() + Math.random();
+}
+
 export function ChatPage() {
   const [health, setHealth] = useState("checking");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
   const [draft, setDraft] = useState("");
   const [threadId, setThreadId] = useState<string>();
   const [ragEnabled, setRagEnabled] = useState(false);
@@ -55,8 +59,8 @@ export function ChatPage() {
     const content = draft.trim();
     if (!content || isLoading) return;
 
-    const userMessageId = Date.now();
-    const assistantMessageId = userMessageId + 1;
+    const userMessageId = createClientMessageId();
+    const assistantMessageId = createClientMessageId();
 
     setMessages((current) => [
       ...current,
@@ -77,16 +81,40 @@ export function ChatPage() {
       onToken: (token) => {
         setMessages((current) =>
           current.map((message) =>
-            message.id === assistantMessageId
+            message.role === "assistant" && message.id === assistantMessageId
               ? { ...message, content: message.content + token }
               : message,
           ),
         );
       },
+      onToolStart: (data) => {
+        setMessages((current) => [
+          ...current,
+          {
+            id: createClientMessageId(),
+            role: "tool",
+            event: "start",
+            tool: data.tool ?? "unknown",
+            content: data.input ?? "",
+          },
+        ]);
+      },
+      onToolResult: (data) => {
+        setMessages((current) => [
+          ...current,
+          {
+            id: createClientMessageId(),
+            role: "tool",
+            event: "result",
+            tool: data.tool ?? "unknown",
+            content: data.output ?? "",
+          },
+        ]);
+      },
       onError: (message) => {
         setMessages((current) =>
           current.map((item) =>
-            item.id === assistantMessageId
+            item.role === "assistant" && item.id === assistantMessageId
               ? { ...item, content: `请求失败：${message}` }
               : item,
           ),

@@ -223,6 +223,31 @@ input {
   color: #ffffff;
 }
 
+.tool-event {
+  width: min(680px, 100%);
+  padding: 10px 12px;
+  border: 1px solid #d9dfeb;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.tool-event span {
+  display: block;
+  margin-bottom: 6px;
+  color: #475467;
+  font-size: 12px;
+}
+
+.tool-event pre {
+  overflow-x: auto;
+  margin: 0;
+  color: #344054;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .composer {
   display: grid;
   grid-template-columns: auto 1fr auto;

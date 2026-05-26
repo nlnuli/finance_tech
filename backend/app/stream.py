@@ -35,6 +35,24 @@ def get_text_from_message_chunk(chunk: object) -> str:
     return str(content)
 
 
+def to_sse_text(value: object) -> str:
+    """把工具输入/输出转换成可以放进 SSE JSON 里的文本。"""
+    if value is None:
+        return ""
+
+    content = getattr(value, "content", None)
+    if content is not None:
+        return to_sse_text(content)
+
+    if isinstance(value, str):
+        return value
+
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+
+    return str(value)
+
+
 def get_text_from_graph_event(event: dict) -> str:
     """把 LangGraph 事件转换成要发给前端的文本片段。"""
     event_type = event.get("event")
@@ -96,6 +114,28 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
 
             if event_type == "on_chat_model_stream":
                 has_token_stream = True
+
+            if event_type == "on_tool_start":
+                data = graph_event.get("data", {})
+                yield make_sse_event(
+                    "tool_start",
+                    {
+                        "tool": graph_event.get("name", ""),
+                        "input": to_sse_text(data.get("input")),
+                    },
+                )
+                continue
+
+            if event_type == "on_tool_end":
+                data = graph_event.get("data", {})
+                yield make_sse_event(
+                    "tool_result",
+                    {
+                        "tool": graph_event.get("name", ""),
+                        "output": to_sse_text(data.get("output")),
+                    },
+                )
+                continue
 
             if event_type == "on_chain_stream" and has_token_stream:
                 continue
