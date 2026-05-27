@@ -4,7 +4,9 @@ import { ApiMessage, getHealth } from "../api";
 import { useChatStream } from "../hooks/useChatStream";
 import { useMessages } from "../hooks/useMessages";
 import { useThreads } from "../hooks/useThreads";
+import { AgentMode, AgentModeConfig } from "./AgentModeConfig";
 import { FileUpload } from "./FileUpload";
+import { MessageInput } from "./MessageInput";
 import { ChatMessage, MessageItem, MessageList } from "./MessageList";
 import { PlanStep, PlanView } from "./PlanView";
 import { ThreadList } from "./ThreadList";
@@ -44,8 +46,9 @@ export function ChatPage() {
   const [draft, setDraft] = useState("");
   const [threadId, setThreadId] = useState<string>();
   const [ragEnabled, setRagEnabled] = useState(false);
+  const [agentMode, setAgentMode] = useState<AgentMode>("react");
 
-  const { isLoading, sendMessage } = useChatStream();
+  const { errorMessage, isLoading, sendMessage, status, stop } = useChatStream();
   const { threads, isLoadingThreads, loadThreads } = useThreads();
   const { isLoadingMessages, loadMessages } = useMessages();
 
@@ -94,6 +97,7 @@ export function ChatPage() {
       message: content,
       threadId,
       ragEnabled,
+      mode: agentMode,
       onMetadata: (data) => {
         const nextThreadId = toStringValue(data.thread_id);
         if (nextThreadId) {
@@ -207,7 +211,14 @@ export function ChatPage() {
               <h1>Personal QA Assistant</h1>
               <p>Backend health: {health}</p>
             </div>
-            <FileUpload />
+            <div className="chat-header-actions">
+              <AgentModeConfig
+                mode={agentMode}
+                onSave={setAgentMode}
+                disabled={isLoading}
+              />
+              <FileUpload />
+            </div>
           </header>
 
           {isLoadingMessages ? (
@@ -221,27 +232,17 @@ export function ChatPage() {
             </div>
           )}
 
-          <form className="composer" onSubmit={handleSubmit}>
-            <label className="rag-toggle">
-              <input
-                type="checkbox"
-                checked={ragEnabled}
-                onChange={(event) => setRagEnabled(event.target.checked)}
-                disabled={isLoading}
-              />
-              <span>RAG</span>
-            </label>
-            <input
-              aria-label="Message"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="输入问题..."
-              disabled={isLoading}
-            />
-            <button type="submit" disabled={isLoading}>
-              {isLoading ? "生成中" : "发送"}
-            </button>
-          </form>
+          <MessageInput
+            draft={draft}
+            errorMessage={errorMessage}
+            isLoading={isLoading}
+            ragEnabled={ragEnabled}
+            status={status}
+            onChangeDraft={setDraft}
+            onChangeRagEnabled={setRagEnabled}
+            onSubmit={handleSubmit}
+            onStop={stop}
+          />
         </section>
       </div>
     </main>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { API_BASE_URL } from "../api";
 
@@ -11,6 +11,7 @@ type SendMessageOptions = {
   message: string;
   threadId?: string;
   ragEnabled?: boolean;
+  mode?: string;
   onMetadata?: (data: Record<string, unknown>) => void;
   onToken?: (token: string) => void;
   onMessage?: (content: string) => void;
@@ -22,6 +23,8 @@ type SendMessageOptions = {
   onError?: (message: string) => void;
   onEnd?: () => void;
 };
+
+export type StreamStatus = "idle" | "inflight" | "error" | "done";
 
 function toText(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -49,9 +52,23 @@ function parseSseEvent(rawEvent: string): StreamEvent | null {
 
 export function useChatStream() {
   const [isLoading, setIsLoading] = useState(false);
+  const [status, setStatus] = useState<StreamStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  function stop() {
+    abortControllerRef.current?.abort();
+  }
 
   async function sendMessage(options: SendMessageOptions) {
+    abortControllerRef.current?.abort();
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     setIsLoading(true);
+    setStatus("inflight");
+    setErrorMessage("");
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
@@ -59,10 +76,12 @@ export function useChatStream() {
         headers: {
           "Content-Type": "application/json",
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           message: options.message,
           thread_id: options.threadId,
           rag_enabled: options.ragEnabled ?? false,
+          mode: options.mode ?? "react",
         }),
       });
 
@@ -111,22 +130,42 @@ export function useChatStream() {
             options.onToolResult?.(parsed.data);
           }
           if (parsed.event === "error") {
-            options.onError?.(toText(parsed.data.message) || "Unknown stream error");
+            const message = toText(parsed.data.message) || "Unknown stream error";
+            setStatus("error");
+            setErrorMessage(message);
+            options.onError?.(message);
           }
           if (parsed.event === "end") {
+            setStatus((current) => (current === "error" ? "error" : "done"));
             options.onEnd?.();
           }
         }
       }
     } catch (error) {
-      options.onError?.(error instanceof Error ? error.message : "Unknown error");
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setStatus("done");
+        options.onEnd?.();
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setStatus("error");
+      setErrorMessage(message);
+      options.onError?.(message);
     } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
+      setStatus((current) => (current === "inflight" ? "done" : current));
       setIsLoading(false);
     }
   }
 
   return {
+    errorMessage,
     isLoading,
     sendMessage,
+    status,
+    stop,
   };
 }

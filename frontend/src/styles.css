@@ -143,6 +143,78 @@ input {
   font-size: 14px;
 }
 
+.chat-header-actions {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.agent-mode-config {
+  display: grid;
+  gap: 8px;
+  min-width: min(520px, 100%);
+}
+
+.agent-mode-config > span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.agent-mode-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-mode-options label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #e7ebf3;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.agent-mode-options label.active {
+  border-color: #2563eb;
+  background: #eef3ff;
+}
+
+.agent-mode-options input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-mode-options strong {
+  color: #172033;
+  font-size: 13px;
+}
+
+.agent-mode-options small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.agent-mode-config button {
+  justify-self: end;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.agent-mode-config button:disabled {
+  background: #9aa8bd;
+  cursor: not-allowed;
+}
+
 .file-upload {
   display: flex;
   align-items: center;
@@ -396,6 +468,33 @@ input {
   cursor: not-allowed;
 }
 
+.composer .stop-button {
+  background: #dc2626;
+}
+
+.composer .stop-button:hover {
+  background: #b91c1c;
+}
+
+.composer-status {
+  grid-column: 2 / 4;
+  margin: -4px 0 0;
+  color: #667085;
+  font-size: 13px;
+}
+
+.composer-status.error {
+  color: #dc2626;
+}
+
+.composer-status.done {
+  color: #16a34a;
+}
+
+.composer-status.inflight {
+  color: #2563eb;
+}
+
 .tools-page {
   width: min(1180px, 100%);
   min-height: calc(100vh - 96px);
@@ -498,6 +597,16 @@ input {
   .chat-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .chat-header-actions,
+  .agent-mode-config {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .agent-mode-options {
+    grid-template-columns: 1fr;
   }
 
   .file-upload {

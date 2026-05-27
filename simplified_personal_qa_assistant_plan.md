@@ -1620,7 +1620,7 @@ frontend/src/components/MessageList.tsx
 - 前端能看到调用了哪个工具
 - 前端能看到工具返回结果
 
-### 19. 实现 Plan-Solve Graph
+### 19. 实现 Plan-Solve Graph -> 完成
 
 需要实现：
 
@@ -1654,7 +1654,7 @@ backend/app/agent.py
 
 
 
-### 20. 前端展示 plan/step 事件
+### 20. 前端展示 plan/step 事件 ->完成
 
 需要实现：
 
@@ -1676,7 +1676,7 @@ frontend/src/hooks/useChatStream.ts
 - 用户能看到模型的计划
 - 用户能看到每一步执行进度和结果
 
-### 21. 前端实现 Agent Mode 配置
+### 21. 前端实现 Agent Mode 配置 -> 完成
 
 需要实现：
 
@@ -1702,7 +1702,7 @@ backend/app/agent.py
 - 选择 ReAct 时走 ReAct Graph
 - 选择 Plan-Solve 时走 Plan-Solve Graph
 
-### 22. 前端实现 Tool 配置 UI
+<!-- ### 22. 前端实现 Tool 配置 UI
 
 需要实现：
 
@@ -1722,7 +1722,7 @@ frontend/src/api.ts
 验收标准：
 
 - 前端能启用 calculator
-- 保存后 ReAct Graph 可以加载该工具
+- 保存后 ReAct Graph 可以加载该工具 -->
 
 ### 23. 增加错误处理和 loading 状态
 
@@ -1732,7 +1732,6 @@ frontend/src/api.ts
 - LLM 调用失败时给前端安全错误信息
 - Tool 调用失败时显示工具错误，不直接中断整个会话
 - 前端支持 inflight/error/done 状态
-- 支持用户中断当前流
 
 建议文件：
 

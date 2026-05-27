@@ -13,6 +13,8 @@ from .schemas import ChatStreamRequest
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 chat_strategy = ChatStrategy()
+SAFE_CHAT_ERROR_MESSAGE = "请求失败，请稍后重试。"
+SAFE_TOOL_ERROR_MESSAGE = "工具调用失败，请检查工具配置或稍后重试。"
 
 
 def make_sse_event(event_name: str, data: dict) -> str:
@@ -180,7 +182,10 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
         title = request.message[:50] if is_new_thread else None
         ensure_thread(thread_id, title=title)
         save_message(thread_id, "user", request.message)
-        graph, graph_input, graph_name = chat_strategy.select_graph_input(request.message)
+        graph, graph_input, graph_name = chat_strategy.select_graph_input(
+            request.message,
+            mode=request.mode,
+        )
 
         async for graph_event in graph.astream_events(
             graph_input,
@@ -246,12 +251,11 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
                 continue
 
             if event_type == "on_tool_error":
-                data = graph_event.get("data", {})
                 yield make_sse_event(
                     "tool_result",
                     {
                         "tool": graph_event.get("name", ""),
-                        "output": to_sse_text(data.get("error")),
+                        "output": SAFE_TOOL_ERROR_MESSAGE,
                     },
                 )
                 continue
@@ -272,7 +276,8 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
         yield make_sse_event("message", {"content": final_answer})
         yield make_sse_event("end", {"thread_id": thread_id})
     except Exception as exc:
-        yield make_sse_event("error", {"message": str(exc)})
+        print(f"chat stream error: {exc}")
+        yield make_sse_event("error", {"message": SAFE_CHAT_ERROR_MESSAGE})
         yield make_sse_event("end", {"thread_id": thread_id})
 
 

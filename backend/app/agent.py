@@ -2,6 +2,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent
 
 from .checkpoint import get_checkpointer
+from .graph_chat import graph as chat_graph
 from .graph_plan_solve import plan_solve_graph
 from .llm import get_llm
 from .tools import get_tool_callables
@@ -17,20 +18,6 @@ REACT_PROMPT = """
 - 工具返回后，请基于工具结果给出最终答案。
 - 最终答案使用中文，结构清晰、简洁准确。
 """
-
-
-COMPLEX_QUESTION_KEYWORDS = [
-    "分析",
-    "比较",
-    "总结",
-    "规划",
-    "步骤",
-    "为什么",
-    "如何",
-    "compare",
-    "analyze",
-    "summarize",
-]
 
 
 class ReactAgent:
@@ -52,11 +39,21 @@ class PlanSolveAgent:
 
 class ChatStrategy:
     def __init__(self):
+        self.chat_graph = chat_graph
         self.react_graph = ReactAgent().graph
         self.plan_solve_graph = PlanSolveAgent().graph
 
-    def select_graph_input(self, message: str):
-        if self.should_use_plan_solve(message):
+    def select_graph_input(self, message: str, mode: str = "react"):
+        if mode == "chat":
+            return (
+                self.chat_graph,
+                {
+                    "messages": [HumanMessage(content=message)],
+                },
+                "chat",
+            )
+
+        if mode == "plan_solve":
             return (
                 self.plan_solve_graph,
                 {
@@ -75,11 +72,3 @@ class ChatStrategy:
             },
             "react",
         )
-
-    def should_use_plan_solve(self, message: str) -> bool:
-        lowered_message = message.lower()
-
-        if len(message) > 80:
-            return True
-
-        return any(keyword in lowered_message for keyword in COMPLEX_QUESTION_KEYWORDS)

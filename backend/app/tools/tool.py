@@ -54,12 +54,15 @@ def format_search_results(results: list[dict]) -> str:
 @tool
 def rag_search(query: str) -> str:
     """Search uploaded financial documents and return relevant chunks with source metadata."""
-    results = similarity_search(
-        query=query,
-        assistant_id="default",
-        k=4,
-    )
-    return format_search_results(results)
+    try:
+        results = similarity_search(
+            query=query,
+            assistant_id="default",
+            k=4,
+        )
+        return format_search_results(results)
+    except Exception:
+        return "rag_search error: failed to search uploaded documents."
 
 
 def evaluate_math_node(node: ast.AST) -> float:

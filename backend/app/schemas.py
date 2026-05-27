@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -48,3 +48,4 @@ class ChatStreamRequest(BaseModel):
     message: str = Field(min_length=1)
     thread_id: Optional[str] = None
     rag_enabled: bool = False
+    mode: Literal["chat", "react", "plan_solve"] = "react"
