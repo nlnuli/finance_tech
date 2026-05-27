@@ -1598,7 +1598,7 @@ backend/app/agent.py
 - 工具结果进入 LangGraph state
 - checkpoint 能恢复 ReAct 消息状态
 
-### 18. 前端展示 tool_start/tool_result
+### 18. 前端展示 tool_start/tool_result -> 完成
 
 需要实现：
 
@@ -1650,6 +1650,9 @@ backend/app/agent.py
 - 复杂问题会先生成 plan
 - 每一步执行结果会保存到 observations
 - 最终回答能总结计划执行结果
+
+
+
 
 ### 20. 前端展示 plan/step 事件
 

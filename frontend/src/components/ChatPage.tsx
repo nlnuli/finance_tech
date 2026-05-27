@@ -6,6 +6,7 @@ import { useMessages } from "../hooks/useMessages";
 import { useThreads } from "../hooks/useThreads";
 import { FileUpload } from "./FileUpload";
 import { ChatMessage, MessageItem, MessageList } from "./MessageList";
+import { PlanStep, PlanView } from "./PlanView";
 import { ThreadList } from "./ThreadList";
 
 function toChatMessage(message: ApiMessage): ChatMessage {
@@ -20,9 +21,26 @@ function createClientMessageId() {
   return Date.now() + Math.random();
 }
 
+function toStringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function toNumberValue(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function createPlanStep(text: string): PlanStep {
+  return {
+    id: createClientMessageId(),
+    text,
+    status: "pending",
+  };
+}
+
 export function ChatPage() {
   const [health, setHealth] = useState("checking");
   const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [planSteps, setPlanSteps] = useState<PlanStep[]>([]);
   const [draft, setDraft] = useState("");
   const [threadId, setThreadId] = useState<string>();
   const [ragEnabled, setRagEnabled] = useState(false);
@@ -42,12 +60,14 @@ export function ChatPage() {
   function handleNewThread() {
     setThreadId(undefined);
     setMessages([]);
+    setPlanSteps([]);
     setDraft("");
   }
 
   async function handleSelectThread(selectedThreadId: string) {
     setThreadId(selectedThreadId);
     setDraft("");
+    setPlanSteps([]);
 
     const data = await loadMessages(selectedThreadId);
     setMessages(data.map(toChatMessage));
@@ -67,6 +87,7 @@ export function ChatPage() {
       { id: userMessageId, role: "user", content },
       { id: assistantMessageId, role: "assistant", content: "" },
     ]);
+    setPlanSteps([]);
     setDraft("");
 
     void sendMessage({
@@ -74,8 +95,9 @@ export function ChatPage() {
       threadId,
       ragEnabled,
       onMetadata: (data) => {
-        if (data.thread_id) {
-          setThreadId(data.thread_id);
+        const nextThreadId = toStringValue(data.thread_id);
+        if (nextThreadId) {
+          setThreadId(nextThreadId);
         }
       },
       onToken: (token) => {
@@ -94,8 +116,8 @@ export function ChatPage() {
             id: createClientMessageId(),
             role: "tool",
             event: "start",
-            tool: data.tool ?? "unknown",
-            content: data.input ?? "",
+            tool: toStringValue(data.tool) || "unknown",
+            content: toStringValue(data.input),
           },
         ]);
       },
@@ -106,10 +128,50 @@ export function ChatPage() {
             id: createClientMessageId(),
             role: "tool",
             event: "result",
-            tool: data.tool ?? "unknown",
-            content: data.output ?? "",
+            tool: toStringValue(data.tool) || "unknown",
+            content: toStringValue(data.output),
           },
         ]);
+      },
+      onPlan: (data) => {
+        const steps = Array.isArray(data.steps)
+          ? data.steps.map((step) => String(step))
+          : [];
+
+        setPlanSteps(steps.map(createPlanStep));
+      },
+      onStepStart: (data) => {
+        const stepIndex = toNumberValue(data.step_index);
+        if (stepIndex === null) return;
+
+        const stepText = toStringValue(data.step);
+        setPlanSteps((current) =>
+          current.map((step, index) =>
+            index === stepIndex
+              ? {
+                  ...step,
+                  text: stepText || step.text,
+                  status: "running",
+                }
+              : step,
+          ),
+        );
+      },
+      onStepResult: (data) => {
+        const stepIndex = toNumberValue(data.step_index);
+        if (stepIndex === null) return;
+
+        setPlanSteps((current) =>
+          current.map((step, index) =>
+            index === stepIndex
+              ? {
+                  ...step,
+                  status: "done",
+                  result: toStringValue(data.result),
+                }
+              : step,
+          ),
+        );
       },
       onError: (message) => {
         setMessages((current) =>
@@ -153,7 +215,10 @@ export function ChatPage() {
           ) : messages.length === 0 ? (
             <div className="empty-chat">开始一个新问题，或从左侧选择历史对话。</div>
           ) : (
-            <MessageList messages={messages} />
+            <div className="conversation">
+              <PlanView steps={planSteps} />
+              <MessageList messages={messages} />
+            </div>
           )}
 
           <form className="composer" onSubmit={handleSubmit}>

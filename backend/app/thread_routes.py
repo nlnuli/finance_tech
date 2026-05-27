@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from langchain_core.messages import BaseMessage
 
-from .graph_chat import graph
+from .graph_plan_solve import plan_solve_graph
 from .model import storage
 from .schemas import CreateThreadRequest, MessageResponse, ThreadResponse
 
@@ -67,7 +67,7 @@ def list_thread_messages(thread_id: str) -> list[dict]:
 async def get_thread_state(thread_id: str) -> dict:
     ensure_thread_exists(thread_id)
 
-    state = await graph.aget_state(get_graph_config(thread_id))
+    state = await plan_solve_graph.aget_state(get_graph_config(thread_id))
     return serialize_state(state)
 
 
@@ -76,7 +76,7 @@ async def get_thread_history(thread_id: str) -> list[dict]:
     ensure_thread_exists(thread_id)
 
     history = []
-    async for state in graph.aget_state_history(get_graph_config(thread_id)):
+    async for state in plan_solve_graph.aget_state_history(get_graph_config(thread_id)):
         history.append(serialize_state(state))
 
     return history

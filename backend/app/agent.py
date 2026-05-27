@@ -2,6 +2,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent
 
 from .checkpoint import get_checkpointer
+from .graph_plan_solve import plan_solve_graph
 from .llm import get_llm
 from .tools import get_tool_callables
 
@@ -18,6 +19,20 @@ REACT_PROMPT = """
 """
 
 
+COMPLEX_QUESTION_KEYWORDS = [
+    "分析",
+    "比较",
+    "总结",
+    "规划",
+    "步骤",
+    "为什么",
+    "如何",
+    "compare",
+    "analyze",
+    "summarize",
+]
+
+
 class ReactAgent:
     def __init__(self):
         self.llm = get_llm()
@@ -30,11 +45,41 @@ class ReactAgent:
         )
 
 
+class PlanSolveAgent:
+    def __init__(self):
+        self.graph = plan_solve_graph
+
+
 class ChatStrategy:
     def __init__(self):
         self.react_graph = ReactAgent().graph
+        self.plan_solve_graph = PlanSolveAgent().graph
 
     def select_graph_input(self, message: str):
-        return self.react_graph, {
-            "messages": [HumanMessage(content=message)],
-        }
+        if self.should_use_plan_solve(message):
+            return (
+                self.plan_solve_graph,
+                {
+                    "messages": [HumanMessage(content=message)],
+                    "plan": [],
+                    "current_step": 0,
+                    "observations": [],
+                },
+                "plan_solve",
+            )
+
+        return (
+            self.react_graph,
+            {
+                "messages": [HumanMessage(content=message)],
+            },
+            "react",
+        )
+
+    def should_use_plan_solve(self, message: str) -> bool:
+        lowered_message = message.lower()
+
+        if len(message) > 80:
+            return True
+
+        return any(keyword in lowered_message for keyword in COMPLEX_QUESTION_KEYWORDS)

@@ -4,21 +4,28 @@ import { API_BASE_URL } from "../api";
 
 type StreamEvent = {
   event: string;
-  data: Record<string, string>;
+  data: Record<string, unknown>;
 };
 
 type SendMessageOptions = {
   message: string;
   threadId?: string;
   ragEnabled?: boolean;
-  onMetadata?: (data: Record<string, string>) => void;
+  onMetadata?: (data: Record<string, unknown>) => void;
   onToken?: (token: string) => void;
   onMessage?: (content: string) => void;
-  onToolStart?: (data: Record<string, string>) => void;
-  onToolResult?: (data: Record<string, string>) => void;
+  onPlan?: (data: Record<string, unknown>) => void;
+  onStepStart?: (data: Record<string, unknown>) => void;
+  onStepResult?: (data: Record<string, unknown>) => void;
+  onToolStart?: (data: Record<string, unknown>) => void;
+  onToolResult?: (data: Record<string, unknown>) => void;
   onError?: (message: string) => void;
   onEnd?: () => void;
 };
+
+function toText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
 
 function parseSseEvent(rawEvent: string): StreamEvent | null {
   const lines = rawEvent.split("\n");
@@ -83,10 +90,19 @@ export function useChatStream() {
             options.onMetadata?.(parsed.data);
           }
           if (parsed.event === "token") {
-            options.onToken?.(parsed.data.content ?? "");
+            options.onToken?.(toText(parsed.data.content));
           }
           if (parsed.event === "message") {
-            options.onMessage?.(parsed.data.content ?? "");
+            options.onMessage?.(toText(parsed.data.content));
+          }
+          if (parsed.event === "plan") {
+            options.onPlan?.(parsed.data);
+          }
+          if (parsed.event === "step_start") {
+            options.onStepStart?.(parsed.data);
+          }
+          if (parsed.event === "step_result") {
+            options.onStepResult?.(parsed.data);
           }
           if (parsed.event === "tool_start") {
             options.onToolStart?.(parsed.data);
@@ -95,7 +111,7 @@ export function useChatStream() {
             options.onToolResult?.(parsed.data);
           }
           if (parsed.event === "error") {
-            options.onError?.(parsed.data.message ?? "Unknown stream error");
+            options.onError?.(toText(parsed.data.message) || "Unknown stream error");
           }
           if (parsed.event === "end") {
             options.onEnd?.();
