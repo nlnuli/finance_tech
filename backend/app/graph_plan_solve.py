@@ -9,7 +9,6 @@ from langgraph.graph.message import add_messages
 
 from .checkpoint import get_checkpointer
 from .llm import get_llm
-from .tools import get_tool_callables
 
 
 MAX_PLAN_STEPS = 5
@@ -89,16 +88,10 @@ def parse_tool_decision(text: str) -> dict:
     }
 
 
-def build_tool_map() -> dict:
-    tools = get_tool_callables()
-    return {tool.name: tool for tool in tools}
-
-
 def get_tool_arg_names(tool: object) -> list[str]:
     args = getattr(tool, "args", {})
     if isinstance(args, dict):
         return list(args.keys())
-
     return []
 
 
@@ -131,20 +124,18 @@ class PlannerNode:
             ],
             config=config,
         )
-        plan = parse_plan(get_text(response))
-
         return {
-            "plan": plan,
+            "plan": parse_plan(get_text(response)),
             "current_step": 0,
             "observations": [],
         }
 
 
 class ExecutorNode:
-    def __init__(self):
+    def __init__(self, tools: list):
         self.llm = get_llm()
-        self.tools = build_tool_map()
-        self.tool_names = "、".join(self.tools.keys())
+        self.tools = {tool.name: tool for tool in tools}
+        self.tool_names = "、".join(self.tools.keys()) if self.tools else "无"
 
     async def __call__(self, state: PlanSolveState, config: RunnableConfig) -> dict:
         step_index = state.get("current_step", 0)
@@ -180,10 +171,16 @@ class ExecutorNode:
             ],
             config=config,
         )
+
         decision = parse_tool_decision(get_text(response))
         tool_name = str(decision.get("tool", "none"))
 
-        if tool_name in self.tools:
+        if tool_name not in self.tools:
+            observation = (
+                f"Step {step_index + 1}: {step}\n"
+                f"Observation: {decision.get('answer', '').strip()}"
+            )
+        else:
             tool = self.tools[tool_name]
             tool_input = normalize_tool_input(tool, decision.get("input") or {})
 
@@ -198,11 +195,6 @@ class ExecutorNode:
                 f"Tool: {tool_name}\n"
                 f"Input: {json.dumps(tool_input, ensure_ascii=False)}\n"
                 f"Result: {result_text}"
-            )
-        else:
-            observation = (
-                f"Step {step_index + 1}: {step}\n"
-                f"Observation: {decision.get('answer', '').strip()}"
             )
 
         return {
@@ -235,32 +227,30 @@ class SolverNode:
             ],
             config=config,
         )
-
         return {"messages": [AIMessage(content=get_text(response))]}
 
 
 def should_continue(state: PlanSolveState) -> str:
     if state.get("current_step", 0) < len(state.get("plan", [])):
         return "executor"
-
     return "solver"
 
 
-builder = StateGraph(PlanSolveState)
-builder.add_node("planner", PlannerNode())
-builder.add_node("executor", ExecutorNode())
-builder.add_node("solver", SolverNode())
+def create_plan_solve_graph(tools: list):
+    builder = StateGraph(PlanSolveState)
+    builder.add_node("planner", PlannerNode())
+    builder.add_node("executor", ExecutorNode(tools))
+    builder.add_node("solver", SolverNode())
 
-builder.add_edge(START, "planner")
-builder.add_edge("planner", "executor")
-builder.add_conditional_edges(
-    "executor",
-    should_continue,
-    {
-        "executor": "executor",
-        "solver": "solver",
-    },
-)
-builder.add_edge("solver", END)
-
-plan_solve_graph = builder.compile(checkpointer=get_checkpointer())
+    builder.add_edge(START, "planner")
+    builder.add_edge("planner", "executor")
+    builder.add_conditional_edges(
+        "executor",
+        should_continue,
+        {
+            "executor": "executor",
+            "solver": "solver",
+        },
+    )
+    builder.add_edge("solver", END)
+    return builder.compile(checkpointer=get_checkpointer())

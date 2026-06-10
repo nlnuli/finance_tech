@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+DEFAULT_MCP_CONFIG_PATH = Path(__file__).resolve().parents[1] / "mcp_servers.json"
 
 
 class Settings(BaseSettings):
@@ -32,6 +33,10 @@ class Settings(BaseSettings):
     openai_embedding_model: str = Field(
         default="text-embedding-3-small",
         alias="OPENAI_EMBEDDING_MODEL",
+    )
+    mcp_config_path: str = Field(
+        default=str(DEFAULT_MCP_CONFIG_PATH),
+        alias="MCP_CONFIG_PATH",
     )
 
     model_config = SettingsConfigDict(

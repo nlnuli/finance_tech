@@ -46,6 +46,9 @@ export type ToolInfo = {
   name: string;
   description: string;
   args_schema: Record<string, unknown>;
+  source: "local_mcp" | "external_mcp";
+  server_name: string;
+  transport: "stdio" | "http";
 };
 
 export async function getHealth(): Promise<HealthResponse> {

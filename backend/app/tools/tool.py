@@ -3,11 +3,8 @@ import operator
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from langchain_core.tools import StructuredTool
-from langchain_core.tools import tool
-from pydantic import BaseModel, Field
-
 from ..vectorstore import similarity_search
+
 
 ALLOWED_OPERATORS = {
     ast.Add: operator.add,
@@ -23,14 +20,6 @@ ALLOWED_UNARY_OPERATORS = {
     ast.UAdd: operator.pos,
     ast.USub: operator.neg,
 }
-
-
-class CalculatorInput(BaseModel):
-    expression: str = Field(description="A safe math expression, for example: 1 + 2 * (3 + 4)")
-
-
-class CurrentTimeInput(BaseModel):
-    timezone: str = Field(default="Asia/Shanghai", description="IANA timezone name")
 
 
 def format_search_results(results: list[dict]) -> str:
@@ -51,9 +40,7 @@ def format_search_results(results: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-@tool
 def rag_search(query: str) -> str:
-    """Search uploaded financial documents and return relevant chunks with source metadata."""
     try:
         results = similarity_search(
             query=query,
@@ -111,26 +98,3 @@ def run_current_time(timezone: str = "Asia/Shanghai") -> str:
         return f"current time in {timezone}: {current:%Y-%m-%d %H:%M:%S}"
     except ZoneInfoNotFoundError:
         return f"current_time error: invalid timezone {timezone}"
-
-
-calculator = StructuredTool.from_function(
-    func=run_calculator,
-    name="calculator",
-    description="Safely evaluate a basic math expression.",
-    args_schema=CalculatorInput,
-)
-
-current_time = StructuredTool.from_function(
-    func=run_current_time,
-    name="current_time",
-    description="Return the current time for an IANA timezone.",
-    args_schema=CurrentTimeInput,
-)
-
-
-def get_all_tools() -> list:
-    return [
-        rag_search,
-        calculator,
-        current_time,
-    ]

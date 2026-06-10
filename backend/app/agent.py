@@ -1,11 +1,4 @@
 from langchain_core.messages import HumanMessage
-from langgraph.prebuilt import create_react_agent
-
-from .checkpoint import get_checkpointer
-from .graph_chat import graph as chat_graph
-from .graph_plan_solve import plan_solve_graph
-from .llm import get_llm
-from .tools import get_tool_callables
 
 
 REACT_PROMPT = """
@@ -20,28 +13,11 @@ REACT_PROMPT = """
 """
 
 
-class ReactAgent:
-    def __init__(self):
-        self.llm = get_llm()
-        self.tools = get_tool_callables()
-        self.graph = create_react_agent(
-            self.llm,
-            self.tools,
-            checkpointer=get_checkpointer(),
-            prompt=REACT_PROMPT,
-        )
-
-
-class PlanSolveAgent:
-    def __init__(self):
-        self.graph = plan_solve_graph
-
-
 class ChatStrategy:
-    def __init__(self):
+    def __init__(self, chat_graph, react_graph, plan_solve_graph):
         self.chat_graph = chat_graph
-        self.react_graph = ReactAgent().graph
-        self.plan_solve_graph = PlanSolveAgent().graph
+        self.react_graph = react_graph
+        self.plan_solve_graph = plan_solve_graph
 
     def select_graph_input(self, message: str, mode: str = "react"):
         if mode == "chat":

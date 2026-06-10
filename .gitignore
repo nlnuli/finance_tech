@@ -2,9 +2,14 @@
 __pycache__/
 *.py[cod]
 .venv/
+.*venv*/
+.venv_*/
+venv_*/
 venv/
 backend/.env
 backend/uploads/
+.playwright-cli/
+frontend-*-check*.png
 frontend/node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo

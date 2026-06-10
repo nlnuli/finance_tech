@@ -45,29 +45,42 @@ export function MessageInput({
 
   return (
     <form className="composer" onSubmit={onSubmit}>
-      <label className="rag-toggle">
-        <input
-          type="checkbox"
-          checked={ragEnabled}
-          onChange={(event) => onChangeRagEnabled(event.target.checked)}
+      <div className="composer-panel">
+        <textarea
+          aria-label="Message"
+          value={draft}
+          onChange={(event) => onChangeDraft(event.target.value)}
+          placeholder="给 Personal QA 发送消息"
           disabled={isLoading}
+          rows={1}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
         />
-        <span>RAG</span>
-      </label>
-      <input
-        aria-label="Message"
-        value={draft}
-        onChange={(event) => onChangeDraft(event.target.value)}
-        placeholder="输入问题..."
-        disabled={isLoading}
-      />
-      {isLoading ? (
-        <button type="button" className="stop-button" onClick={onStop}>
-          停止
-        </button>
-      ) : (
-        <button type="submit">发送</button>
-      )}
+        <div className="composer-actions">
+          <label className="rag-toggle">
+            <input
+              type="checkbox"
+              checked={ragEnabled}
+              onChange={(event) => onChangeRagEnabled(event.target.checked)}
+              disabled={isLoading}
+            />
+            <span>RAG</span>
+          </label>
+          {isLoading ? (
+            <button type="button" className="stop-button" onClick={onStop}>
+              停止
+            </button>
+          ) : (
+            <button type="submit" disabled={!draft.trim()}>
+              发送
+            </button>
+          )}
+        </div>
+      </div>
       {statusText ? <p className={`composer-status ${status}`}>{statusText}</p> : null}
     </form>
   );

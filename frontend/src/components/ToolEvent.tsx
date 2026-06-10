@@ -17,9 +17,9 @@ export function ToolEvent({ message }: ToolEventProps) {
       : `Tool result: ${message.tool}`;
 
   return (
-    <div className="tool-event">
-      <span>{title}</span>
+    <details className="tool-event">
+      <summary>{title}</summary>
       <pre>{message.content || "..."}</pre>
-    </div>
+    </details>
   );
 }

@@ -1,8 +1,9 @@
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useId, useState } from "react";
 
 import { uploadFile } from "../api";
 
 export function FileUpload() {
+  const inputId = useId();
   const [selectedFile, setSelectedFile] = useState<File>();
   const [status, setStatus] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -31,11 +32,14 @@ export function FileUpload() {
 
   return (
     <div className="file-upload">
-      <input type="file" onChange={handleFileChange} />
+      <input id={inputId} type="file" onChange={handleFileChange} />
+      <label className="file-picker" htmlFor={inputId}>
+        选择文件
+      </label>
+      <span>{selectedFile?.name || status || "未选择文件"}</span>
       <button type="button" onClick={handleUpload} disabled={!selectedFile || isUploading}>
         {isUploading ? "上传中" : "上传文件"}
       </button>
-      {status ? <span>{status}</span> : null}
     </div>
   );
 }

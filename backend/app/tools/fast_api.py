@@ -1,17 +1,21 @@
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
-from .registry import list_registered_tools
+from ..runtime import get_app_services
 
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
 @router.get("")
-async def list_tools(enabled: Optional[str] = Query(default=None)) -> list[dict]:
+async def list_tools(
+    request: Request,
+    enabled: Optional[str] = Query(default=None),
+) -> list[dict]:
     enabled_names = None
     if enabled:
         enabled_names = [name.strip() for name in enabled.split(",") if name.strip()]
 
-    return list_registered_tools(enabled_names)
+    provider = get_app_services(request.app).mcp_provider
+    return provider.list_tools(enabled_names)

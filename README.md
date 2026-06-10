@@ -20,7 +20,7 @@ cd /Users/yewen/finance_helpers/finance_tech
 安装后端依赖：
 
 ```bash
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
@@ -45,6 +45,27 @@ cd /Users/yewen/finance_helpers/finance_tech/backend
 
 ```text
 http://127.0.0.1:8000
+```
+
+说明：
+
+- 后端现在依赖 MCP 官方 SDK 和 `langchain-mcp-adapters`，需要 Python 3.10+
+- 默认会自动启动一个本地 MCP server，把 `rag_search`、`calculator`、`current_time` 暴露给 agent
+- 外部 MCP server 可通过 `backend/mcp_servers.json` 或环境变量 `MCP_CONFIG_PATH` 指向的 JSON 文件配置
+
+示例：
+
+```json
+{
+  "servers": [
+    {
+      "name": "weather",
+      "transport": "http",
+      "enabled": true,
+      "url": "http://127.0.0.1:9000/mcp"
+    }
+  ]
+}
 ```
 
 健康检查：

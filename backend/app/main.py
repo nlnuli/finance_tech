@@ -1,20 +1,30 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
+from .runtime import build_app_services
 from .stream import router as chat_router
 from .thread_routes import router as thread_router
-from .tools import router as tools_router
+from .tools.fast_api import router as tools_router
 from .uploads import router as upload_router
 
 # 获取对应设置
 settings = get_settings()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.services = await build_app_services()
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     debug=settings.debug,
+    lifespan=lifespan,
 )
 
 app.add_middleware(

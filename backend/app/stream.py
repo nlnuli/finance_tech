@@ -3,16 +3,16 @@ from collections.abc import AsyncIterator
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from .agent import ChatStrategy
+from .checkpoint import get_checkpointer
 from .model.storage import ensure_thread, save_message
+from .runtime import get_app_services
 from .schemas import ChatStreamRequest
 
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-chat_strategy = ChatStrategy()
 SAFE_CHAT_ERROR_MESSAGE = "请求失败，请稍后重试。"
 SAFE_TOOL_ERROR_MESSAGE = "工具调用失败，请检查工具配置或稍后重试。"
 
@@ -166,7 +166,18 @@ def get_step_result_from_event(event: dict) -> Optional[dict]:
     }
 
 
-async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
+def is_invalid_chat_history_error(exc: Exception) -> bool:
+    message = str(exc)
+    return (
+        "INVALID_CHAT_HISTORY" in message
+        or "Found AIMessages with tool_calls" in message
+    )
+
+
+async def chat_event_stream(
+    app_request: Request,
+    request: ChatStreamRequest,
+) -> AsyncIterator[str]:
     """执行 graph，并把 graph 事件持续转换成 SSE 事件。"""
     is_new_thread = request.thread_id is None
     thread_id = request.thread_id or str(uuid4())
@@ -175,10 +186,12 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
     sent_plan = False
     started_step_indexes = set()
     finished_step_indexes = set()
+    tool_event_depths: dict[str, int] = {}
 
     yield make_sse_event("metadata", {"thread_id": thread_id})
 
     try:
+        chat_strategy = get_app_services(app_request.app).chat_strategy
         title = request.message[:50] if is_new_thread else None
         ensure_thread(thread_id, title=title)
         save_message(thread_id, "user", request.message)
@@ -187,88 +200,127 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
             mode=request.mode,
         )
 
-        async for graph_event in graph.astream_events(
-            graph_input,
-            config={"configurable": {"thread_id": thread_id}},
-            version="v2",
-        ):
-            event_type = graph_event.get("event")
+        recovered_invalid_history = False
+        while True:
+            try:
+                async for graph_event in graph.astream_events(
+                    graph_input,
+                    config={"configurable": {"thread_id": thread_id}},
+                    version="v2",
+                ):
+                    event_type = graph_event.get("event")
 
-            if graph_name == "plan_solve":
-                node_name = get_langgraph_node(graph_event)
+                    if graph_name == "plan_solve":
+                        node_name = get_langgraph_node(graph_event)
 
-                if node_name == "planner" and not sent_plan:
-                    plan = get_plan_from_event(graph_event)
-                    if plan:
-                        sent_plan = True
-                        yield make_sse_event("plan", {"steps": plan})
+                        if node_name == "planner" and not sent_plan:
+                            plan = get_plan_from_event(graph_event)
+                            if plan:
+                                sent_plan = True
+                                yield make_sse_event("plan", {"steps": plan})
 
-                if node_name == "executor" and event_type == "on_chain_start":
-                    step_start = get_step_start_from_event(graph_event)
-                    if step_start and step_start["step_index"] not in started_step_indexes:
-                        started_step_indexes.add(step_start["step_index"])
-                        yield make_sse_event("step_start", step_start)
+                        if node_name == "executor" and event_type == "on_chain_start":
+                            step_start = get_step_start_from_event(graph_event)
+                            if (
+                                step_start
+                                and step_start["step_index"] not in started_step_indexes
+                            ):
+                                started_step_indexes.add(step_start["step_index"])
+                                yield make_sse_event("step_start", step_start)
 
-                if node_name == "executor" and event_type in {
-                    "on_chain_stream",
-                    "on_chain_end",
-                }:
-                    step_result = get_step_result_from_event(graph_event)
-                    if step_result and step_result["step_index"] not in finished_step_indexes:
-                        finished_step_indexes.add(step_result["step_index"])
-                        yield make_sse_event("step_result", step_result)
+                        if node_name == "executor" and event_type in {
+                            "on_chain_stream",
+                            "on_chain_end",
+                        }:
+                            step_result = get_step_result_from_event(graph_event)
+                            if (
+                                step_result
+                                and step_result["step_index"] not in finished_step_indexes
+                            ):
+                                finished_step_indexes.add(step_result["step_index"])
+                                yield make_sse_event("step_result", step_result)
 
-                if event_type == "on_chat_model_stream":
-                    if not is_plan_solve_solver_event(graph_event):
+                        if event_type == "on_chat_model_stream":
+                            if not is_plan_solve_solver_event(graph_event):
+                                continue
+                            has_token_stream = True
+                        elif event_type == "on_chain_stream":
+                            continue
+
+                    if event_type == "on_chat_model_stream":
+                        has_token_stream = True
+
+                    if event_type == "on_tool_start":
+                        data = graph_event.get("data", {})
+                        tool_name = graph_event.get("name", "")
+                        current_depth = tool_event_depths.get(tool_name, 0)
+                        tool_event_depths[tool_name] = current_depth + 1
+                        if current_depth == 0:
+                            yield make_sse_event(
+                                "tool_start",
+                                {
+                                    "tool": tool_name,
+                                    "input": to_sse_text(data.get("input")),
+                                },
+                            )
                         continue
-                    has_token_stream = True
-                elif event_type == "on_chain_stream":
-                    continue
 
-            if event_type == "on_chat_model_stream":
-                has_token_stream = True
+                    if event_type == "on_tool_end":
+                        data = graph_event.get("data", {})
+                        tool_name = graph_event.get("name", "")
+                        current_depth = tool_event_depths.get(tool_name, 0)
+                        next_depth = max(current_depth - 1, 0)
+                        tool_event_depths[tool_name] = next_depth
+                        if next_depth == 0:
+                            yield make_sse_event(
+                                "tool_result",
+                                {
+                                    "tool": tool_name,
+                                    "output": to_sse_text(data.get("output")),
+                                },
+                            )
+                        continue
 
-            if event_type == "on_tool_start":
-                data = graph_event.get("data", {})
-                yield make_sse_event(
-                    "tool_start",
-                    {
-                        "tool": graph_event.get("name", ""),
-                        "input": to_sse_text(data.get("input")),
-                    },
-                )
-                continue
+                    if event_type == "on_tool_error":
+                        tool_name = graph_event.get("name", "")
+                        current_depth = tool_event_depths.get(tool_name, 0)
+                        next_depth = max(current_depth - 1, 0)
+                        tool_event_depths[tool_name] = next_depth
+                        if next_depth == 0:
+                            yield make_sse_event(
+                                "tool_result",
+                                {
+                                    "tool": tool_name,
+                                    "output": SAFE_TOOL_ERROR_MESSAGE,
+                                },
+                            )
+                        continue
 
-            if event_type == "on_tool_end":
-                data = graph_event.get("data", {})
-                yield make_sse_event(
-                    "tool_result",
-                    {
-                        "tool": graph_event.get("name", ""),
-                        "output": to_sse_text(data.get("output")),
-                    },
-                )
-                continue
+                    if event_type == "on_chain_stream" and has_token_stream:
+                        continue
 
-            if event_type == "on_tool_error":
-                yield make_sse_event(
-                    "tool_result",
-                    {
-                        "tool": graph_event.get("name", ""),
-                        "output": SAFE_TOOL_ERROR_MESSAGE,
-                    },
-                )
-                continue
+                    text = get_text_from_graph_event(graph_event)
+                    if not text:
+                        continue
 
-            if event_type == "on_chain_stream" and has_token_stream:
-                continue
+                    final_answer += text
+                    yield make_sse_event("token", {"content": text})
+                break
+            except Exception as exc:
+                if (
+                    recovered_invalid_history
+                    or not is_invalid_chat_history_error(exc)
+                ):
+                    raise
 
-            text = get_text_from_graph_event(graph_event)
-            if not text:
-                continue
-
-            final_answer += text
-            yield make_sse_event("token", {"content": text})
+                recovered_invalid_history = True
+                final_answer = ""
+                has_token_stream = False
+                sent_plan = False
+                started_step_indexes.clear()
+                finished_step_indexes.clear()
+                tool_event_depths.clear()
+                await get_checkpointer().adelete_thread(thread_id)
 
         if final_answer:
             save_message(thread_id, "assistant", final_answer)
@@ -282,9 +334,12 @@ async def chat_event_stream(request: ChatStreamRequest) -> AsyncIterator[str]:
 
 
 @router.post("/stream")
-async def stream_chat(request: ChatStreamRequest) -> StreamingResponse:
+async def stream_chat(
+    app_request: Request,
+    request: ChatStreamRequest,
+) -> StreamingResponse:
     """POST /api/chat/stream：返回 text/event-stream。"""
-    event_iterator = chat_event_stream(request)
+    event_iterator = chat_event_stream(app_request, request)
 
     return StreamingResponse(
         event_iterator,
