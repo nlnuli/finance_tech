@@ -1,3 +1,4 @@
+import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolEvent, ToolEventMessage } from "./ToolEvent";
 
 export type ChatMessage = {
@@ -21,7 +22,7 @@ export function MessageList({ messages }: MessageListProps) {
         ) : (
           <div className={`message ${message.role}`} key={message.id}>
             <span>{message.role === "assistant" ? "Assistant" : "You"}</span>
-            <p>{message.content || "..."}</p>
+            <MarkdownMessage content={message.content} />
           </div>
         ),
       )}

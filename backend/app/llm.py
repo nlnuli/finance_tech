@@ -1,52 +1,65 @@
-# 建立一个langchain llm model
 import os
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-# 加载环境变量
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-# def create_llm() -> ChatOpenAI:
-#     api_key = os.getenv("OPENAI_API_KEY")
-#     if not api_key:
-#         raise RuntimeError("OPENAI_API_KEY is not set in backend/.env")
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
-#     return ChatOpenAI(
-#         model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
-#         temperature=0.7,
-#         api_key=api_key,
-#     )
+load_dotenv(ENV_FILE)
 
 
-# def main() -> None:
-#     llm = create_llm()
-#     response = llm.invoke("What is the capital of France?")
-#     print(response.content)
+def get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"{name} is not set in backend/.env")
+
+    return value
 
 
-# if __name__ == "__main__":
-#     main()
-# api_key = os.getenv("OPENAI_API_KEY")
-# llm = ChatOpenAI(
-#         model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
-#         temperature=0.7,
-#         api_key=api_key,
-# )
-# response = llm.invoke("What is the capital of France?")
-# print(response.content)
+def get_env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def apply_optional_llm_options(options: dict, prefix: str = "OPENAI") -> dict:
+    temperature = os.getenv(f"{prefix}_TEMPERATURE")
+    if temperature:
+        options["temperature"] = float(temperature)
+
+    reasoning_effort = os.getenv(f"{prefix}_REASONING_EFFORT")
+    if reasoning_effort:
+        options["reasoning_effort"] = reasoning_effort
+
+    return options
+
 
 @lru_cache(maxsize=3)
 def get_llm() -> ChatOpenAI:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set in backend/.env")
+    options = {
+        "model": os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
+        "api_key": get_required_env("OPENAI_API_KEY"),
+        "base_url": os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE"),
+        "store": get_env_bool("OPENAI_STORE", False),
+        "streaming": True,
+    }
 
-    return ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
-        temperature=0.7,
-        api_key=api_key,
-        streaming=True,
-    )
+    return ChatOpenAI(**apply_optional_llm_options(options))
+
+
+@lru_cache(maxsize=1)
+def get_official_llm() -> ChatOpenAI:
+    """备用官方 OpenAI 入口；当前业务 graph 不会主动调用它。"""
+    options = {
+        "model": os.getenv("OPENAI_OFFICIAL_MODEL", "gpt-3.5-turbo"),
+        "api_key": get_required_env("OPENAI_OFFICIAL_API_KEY"),
+        "store": get_env_bool("OPENAI_OFFICIAL_STORE", False),
+        "streaming": True,
+    }
+
+    return ChatOpenAI(**apply_optional_llm_options(options, prefix="OPENAI_OFFICIAL"))
