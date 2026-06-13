@@ -15,6 +15,7 @@ from .schemas import ChatStreamRequest
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 SAFE_CHAT_ERROR_MESSAGE = "请求失败，请稍后重试。"
 SAFE_TOOL_ERROR_MESSAGE = "工具调用失败，请检查工具配置或稍后重试。"
+REACT_RECURSION_LIMIT = 8
 
 
 def make_sse_event(event_name: str, data: dict) -> str:
@@ -174,6 +175,15 @@ def is_invalid_chat_history_error(exc: Exception) -> bool:
     )
 
 
+def build_graph_config(thread_id: str, graph_name: str) -> dict:
+    config = {"configurable": {"thread_id": thread_id}}
+
+    if graph_name == "react":
+        config["recursion_limit"] = REACT_RECURSION_LIMIT
+
+    return config
+
+
 async def chat_event_stream(
     app_request: Request,
     request: ChatStreamRequest,
@@ -205,7 +215,7 @@ async def chat_event_stream(
             try:
                 async for graph_event in graph.astream_events(
                     graph_input,
-                    config={"configurable": {"thread_id": thread_id}},
+                    config=build_graph_config(thread_id, graph_name),
                     version="v2",
                 ):
                     event_type = graph_event.get("event")

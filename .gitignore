@@ -8,6 +8,7 @@ venv_*/
 venv/
 backend/.env
 backend/uploads/
+evaluations/results/
 .playwright-cli/
 frontend-*-check*.png
 frontend/node_modules/
