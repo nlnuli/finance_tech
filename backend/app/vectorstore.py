@@ -11,13 +11,25 @@ from .config import get_settings
 
 EMBEDDING_SIZE = 1536
 ASSISTANT_ID_PAYLOAD_KEY = "metadata.assistant_id"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+
+
+def get_embedding_api_key() -> str | None:
+    settings = get_settings()
+    return (
+        settings.openai_embedding_api_key
+        or settings.openai_official_api_key
+    )
 
 
 def validate_vectorstore_settings() -> None:
     settings = get_settings()
 
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set in backend/.env")
+    if not get_embedding_api_key():
+        raise RuntimeError(
+            "OPENAI_EMBEDDING_API_KEY or OPENAI_OFFICIAL_API_KEY is not set "
+            "in backend/.env"
+        )
 
     if not settings.qdrant_url:
         raise RuntimeError("QDRANT_URL is not set in backend/.env")
@@ -30,11 +42,13 @@ def validate_vectorstore_settings() -> None:
 def get_embeddings() -> OpenAIEmbeddings:
     validate_vectorstore_settings()
     settings = get_settings()
+    options = {
+        "model": settings.openai_embedding_model,
+        "api_key": get_embedding_api_key(),
+        "base_url": settings.openai_embedding_base_url or DEFAULT_OPENAI_BASE_URL,
+    }
 
-    return OpenAIEmbeddings(
-        model=settings.openai_embedding_model,
-        api_key=settings.openai_api_key,
-    )
+    return OpenAIEmbeddings(**options)
 
 
 @lru_cache(maxsize=1)

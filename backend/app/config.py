@@ -24,6 +24,10 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    openai_official_api_key: Optional[str] = Field(
+        default=None,
+        alias="OPENAI_OFFICIAL_API_KEY",
+    )
     qdrant_url: Optional[str] = Field(default=None, alias="QDRANT_URL")
     qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
     qdrant_collection: str = Field(
@@ -33,6 +37,14 @@ class Settings(BaseSettings):
     openai_embedding_model: str = Field(
         default="text-embedding-3-small",
         alias="OPENAI_EMBEDDING_MODEL",
+    )
+    openai_embedding_api_key: Optional[str] = Field(
+        default=None,
+        alias="OPENAI_EMBEDDING_API_KEY",
+    )
+    openai_embedding_base_url: Optional[str] = Field(
+        default=None,
+        alias="OPENAI_EMBEDDING_BASE_URL",
     )
     mcp_config_path: str = Field(
         default=str(DEFAULT_MCP_CONFIG_PATH),

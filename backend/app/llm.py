@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 load_dotenv(ENV_FILE)
 
@@ -16,6 +17,22 @@ def get_required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is not set in backend/.env")
 
+    return value
+
+
+def get_first_env(names: list[str]) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
+
+def get_required_first_env(names: list[str]) -> str:
+    value = get_first_env(names)
+    if not value:
+        joined_names = " or ".join(names)
+        raise RuntimeError(f"{joined_names} is not set in backend/.env")
     return value
 
 
@@ -42,14 +59,27 @@ def apply_optional_llm_options(options: dict, prefix: str = "OPENAI") -> dict:
 @lru_cache(maxsize=3)
 def get_llm() -> ChatOpenAI:
     options = {
-        "model": os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
-        "api_key": get_required_env("OPENAI_API_KEY"),
-        "base_url": os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE"),
-        "store": get_env_bool("OPENAI_STORE", False),
+        "model": os.getenv("OPENAI_RELAY_MODEL")
+        or os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
+        "api_key": get_required_first_env(
+            ["OPENAI_RELAY_API_KEY", "OPENAI_API_KEY"]
+        ),
+        "base_url": get_first_env(
+            ["OPENAI_RELAY_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE"]
+        ),
+        "store": get_env_bool(
+            "OPENAI_RELAY_STORE",
+            get_env_bool("OPENAI_STORE", False),
+        ),
         "streaming": True,
     }
 
-    return ChatOpenAI(**apply_optional_llm_options(options))
+    return ChatOpenAI(
+        **apply_optional_llm_options(
+            apply_optional_llm_options(options),
+            prefix="OPENAI_RELAY",
+        )
+    )
 
 
 @lru_cache(maxsize=1)
@@ -63,3 +93,19 @@ def get_official_llm() -> ChatOpenAI:
     }
 
     return ChatOpenAI(**apply_optional_llm_options(options, prefix="OPENAI_OFFICIAL"))
+
+
+@lru_cache(maxsize=1)
+def get_ragas_llm() -> ChatOpenAI:
+    """Stable non-streaming LLM for Ragas generation and judging."""
+    options = {
+        "model": os.getenv("RAGAS_OPENAI_MODEL", "gpt-4o-mini"),
+        "api_key": get_required_first_env(
+            ["RAGAS_OPENAI_API_KEY", "OPENAI_OFFICIAL_API_KEY"]
+        ),
+        "base_url": os.getenv("RAGAS_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL,
+        "store": get_env_bool("RAGAS_OPENAI_STORE", False),
+        "streaming": False,
+    }
+
+    return ChatOpenAI(**apply_optional_llm_options(options, prefix="RAGAS_OPENAI"))

@@ -1,29 +1,34 @@
 import argparse
+import mimetypes
 import shutil
 import sys
+import time
 from pathlib import Path
 from uuid import uuid4
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+sys.path.insert(0, str(BACKEND_ROOT))
 
-from backend.app.model.storage import save_file_record
-from backend.app.parsing import SUPPORTED_EXTENSIONS, parse_file
-from backend.app.rag import split_text_into_chunks
-from backend.app.vectorstore import add_chunks_to_vectorstore
+from app.parsing import SUPPORTED_EXTENSIONS, parse_file
 
 
 UPLOAD_DIR = PROJECT_ROOT / "backend" / "uploads"
-DEFAULT_SOURCE_DIR = Path(
-    "/Users/yewen/Desktop/mag7_avgo_official_financials_2022_2025_v2/downloaded_files"
-)
+DEFAULT_SOURCE_DIR = Path("/Users/yewen/Desktop/file")
 
 
-def get_supported_files(source_dir: Path) -> list[Path]:
+def is_hidden_path(path: Path) -> bool:
+    return any(part.startswith(".") for part in path.parts)
+
+
+def get_supported_files(source_dir: Path, recursive: bool = True) -> list[Path]:
+    pattern = "**/*" if recursive else "*"
     files = []
 
-    for path in sorted(source_dir.iterdir()):
+    for path in sorted(source_dir.glob(pattern)):
         if not path.is_file():
+            continue
+        if is_hidden_path(path.relative_to(source_dir)):
             continue
         if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             continue
@@ -33,6 +38,10 @@ def get_supported_files(source_dir: Path) -> list[Path]:
 
 
 def import_one_file(source_file: Path, assistant_id: str) -> int:
+    from app.model.storage import save_file_record
+    from app.rag import split_text_into_chunks
+    from app.vectorstore import add_chunks_to_vectorstore
+
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     saved_name = f"{uuid4().hex}_{source_file.name}"
@@ -50,7 +59,7 @@ def import_one_file(source_file: Path, assistant_id: str) -> int:
         original_name=source_file.name,
         saved_name=saved_name,
         file_path=str(saved_path),
-        content_type=None,
+        content_type=mimetypes.guess_type(source_file.name)[0],
         size_bytes=saved_path.stat().st_size,
     )
 
@@ -65,9 +74,38 @@ def import_one_file(source_file: Path, assistant_id: str) -> int:
     return len(chunks)
 
 
+def import_one_file_with_retry(
+    source_file: Path,
+    assistant_id: str,
+    retries: int,
+    retry_delay: float,
+) -> int:
+    attempt = 0
+    while True:
+        try:
+            return import_one_file(source_file, assistant_id)
+        except Exception:
+            attempt += 1
+            if attempt > retries:
+                raise
+            wait_seconds = retry_delay * attempt
+            print(
+                f"  retrying after transient failure "
+                f"({attempt}/{retries}) in {wait_seconds:.1f}s ..."
+            )
+            time.sleep(wait_seconds)
+
+
+def format_supported_extensions() -> str:
+    return ", ".join(sorted(SUPPORTED_EXTENSIONS))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Import local files into MySQL and Qdrant.",
+        description=(
+            "Import local files into MySQL and Qdrant using the same "
+            "parse/split/embed flow as the upload API."
+        ),
     )
     parser.add_argument(
         "--source-dir",
@@ -80,15 +118,55 @@ def main() -> None:
         default="default",
         help="assistant_id saved in file records and chunk metadata.",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Import at most this many supported files.",
+    )
+    parser.add_argument(
+        "--no-recursive",
+        action="store_true",
+        help="Only scan files directly under --source-dir.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only list files that would be imported; do not write MySQL/Qdrant.",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="Retry failed file imports this many times.",
+    )
+    parser.add_argument(
+        "--retry-delay",
+        type=float,
+        default=5.0,
+        help="Base delay in seconds between retries. Delay increases per attempt.",
+    )
     args = parser.parse_args()
 
     source_dir = args.source_dir.expanduser().resolve()
     if not source_dir.exists():
         raise FileNotFoundError(f"Source directory not found: {source_dir}")
+    if not source_dir.is_dir():
+        raise NotADirectoryError(f"Source path is not a directory: {source_dir}")
 
-    files = get_supported_files(source_dir)
+    files = get_supported_files(source_dir, recursive=not args.no_recursive)
+    if args.limit is not None:
+        files = files[: args.limit]
+
     print(f"source dir: {source_dir}")
+    print(f"assistant id: {args.assistant_id}")
+    print(f"supported extensions: {format_supported_extensions()}")
     print(f"supported files: {len(files)}")
+
+    if args.dry_run:
+        for index, source_file in enumerate(files, start=1):
+            print(f"[{index}/{len(files)}] {source_file}")
+        print("dry run complete; no files were imported.")
+        return
 
     total_chunks = 0
     failed = []
@@ -96,7 +174,12 @@ def main() -> None:
     for index, source_file in enumerate(files, start=1):
         print(f"[{index}/{len(files)}] importing {source_file.name} ...")
         try:
-            chunk_count = import_one_file(source_file, args.assistant_id)
+            chunk_count = import_one_file_with_retry(
+                source_file=source_file,
+                assistant_id=args.assistant_id,
+                retries=args.retries,
+                retry_delay=args.retry_delay,
+            )
         except Exception as exc:
             failed.append((source_file.name, str(exc)))
             print(f"  failed: {exc}")
