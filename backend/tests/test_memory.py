@@ -8,6 +8,7 @@ from unittest.mock import patch
 from app.memory.service import (
     MemoryEntry,
     MemoryStore,
+    parse_memory_index,
     parse_memory_entries,
     serialize_memory_entry,
 )
@@ -80,9 +81,21 @@ class MemoryStoreTest(unittest.TestCase):
             store.write_topic_entries("default", "archive", [archived])
             index = store.rebuild_index("default")
 
+            self.assertIn(f"id={active.id}", index)
+            self.assertIn("topic=user-profile", index)
+            self.assertIn("status=active", index)
+            self.assertIn("kind=user_profile", index)
+            self.assertIn(f"ref=user-profile.md#{active.id}", index)
+            self.assertIn("keywords=", index)
+            self.assertIn("brief: 用户偏好中文回答", index)
             self.assertIn("用户偏好中文回答", index)
             self.assertNotIn("用户偏好英文回答", index)
             self.assertNotIn("已归档主题", index)
+
+            items = parse_memory_index(index)
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0].id, active.id)
+            self.assertEqual(items[0].topic, "user-profile")
 
     def test_financial_insight_expiry_becomes_stale(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -141,22 +154,69 @@ class MemoryStoreTest(unittest.TestCase):
             state = store.read_state("default")
             self.assertEqual(state["last_processed_message_id"], 3)
 
-    def test_retrieve_memory_brief_updates_usage(self):
+    def test_retrieve_memory_context_loads_full_entry_and_updates_usage(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = self.make_store(Path(tmpdir))
             entry = store.make_entry(
                 "user-profile",
                 "user_profile",
-                "用户主要关注美股 AI 基础设施公司。",
+                "用户主要关注美股 AI 基础设施公司。\n完整细节：偏好跟踪 capex、毛利率和订单能见度。",
                 0.9,
             )
             store.write_topic_entries("default", "user-profile", [entry])
+            store.rebuild_index("default")
 
             brief = store.retrieve_memory_brief("请分析 AI 基础设施公司", "default")
             updated = store.load_entries("default")["user-profile"][0]
 
+            self.assertIn("# Relevant Long-Term Memory", brief)
             self.assertIn("AI 基础设施", brief)
+            self.assertIn("完整细节：偏好跟踪 capex、毛利率和订单能见度", brief)
             self.assertEqual(updated.metadata["use_count"], "1")
+
+    def test_llm_brief_and_keywords_only_write_to_index(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = self.make_store(Path(tmpdir))
+
+            class FakeResponse:
+                content = (
+                    "["
+                    "{"
+                    '"topic": "user-profile", '
+                    '"kind": "user_profile", '
+                    '"content": "用户长期关注美股 AI 基础设施公司。", '
+                    '"brief": "关注美股 AI 基础设施公司", '
+                    '"keywords": ["美股", "AI基础设施", "长期关注"], '
+                    '"confidence": 0.88'
+                    "}"
+                    "]"
+                )
+
+            class FakeLLM:
+                async def ainvoke(self, messages):
+                    return FakeResponse()
+
+            with patch("app.memory.service.get_llm", return_value=FakeLLM()):
+                entries = asyncio.run(
+                    store.extract_llm_entries(
+                        [{"id": 1, "role": "user", "content": "总结我的偏好"}]
+                    )
+                )
+
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0].index_brief, "关注美股 AI 基础设施公司")
+            self.assertEqual(entries[0].index_keywords[0], "美股")
+            self.assertNotIn("brief", entries[0].metadata)
+            self.assertNotIn("keywords", entries[0].metadata)
+
+            store.append_entries("default", entries)
+            index = store.index_path("default").read_text(encoding="utf-8")
+            topic = store.read_topic("default", "user-profile")
+
+            self.assertIn("brief: 关注美股 AI 基础设施公司", index)
+            self.assertIn("keywords=美股,AI基础设施,长期关注", index)
+            self.assertNotIn("brief:", topic)
+            self.assertNotIn("keywords:", topic)
 
 
 if __name__ == "__main__":

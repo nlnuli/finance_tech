@@ -60,6 +60,8 @@ class MemoryEntry:
     topic: str
     metadata: dict[str, str] = field(default_factory=dict)
     body: str = ""
+    index_brief: str = ""
+    index_keywords: list[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
@@ -72,6 +74,17 @@ class MemoryEntry:
     @property
     def kind(self) -> str:
         return self.metadata.get("kind", "note")
+
+
+@dataclass
+class MemoryIndexItem:
+    id: str
+    topic: str
+    status: str
+    kind: str
+    ref: str
+    brief: str = ""
+    keywords: list[str] = field(default_factory=list)
 
 
 def today_iso() -> str:
@@ -123,6 +136,41 @@ def parse_int(value: str | None, default: int = 0) -> int:
         return int(float(value))
     except ValueError:
         return default
+
+
+def parse_memory_index(text: str) -> list[MemoryIndexItem]:
+    items: list[MemoryIndexItem] = []
+    current: MemoryIndexItem | None = None
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- id="):
+            values = {}
+            for token in stripped.removeprefix("- ").split():
+                if "=" not in token:
+                    continue
+                key, value = token.split("=", 1)
+                values[key] = value
+            keywords = [
+                keyword.strip()
+                for keyword in values.get("keywords", "").split(",")
+                if keyword.strip()
+            ]
+            current = MemoryIndexItem(
+                id=values.get("id", ""),
+                topic=values.get("topic", ""),
+                status=values.get("status", "active"),
+                kind=values.get("kind", "note"),
+                ref=values.get("ref", ""),
+                keywords=keywords,
+            )
+            if current.id and current.topic and current.ref:
+                items.append(current)
+            continue
+        if current and stripped.startswith("brief:"):
+            current.brief = stripped.removeprefix("brief:").strip()
+
+    return items
 
 
 def parse_memory_entries(text: str, topic: str) -> list[MemoryEntry]:
@@ -312,6 +360,7 @@ class MemoryStore:
         if not entries:
             return 0
         existing_by_topic = self.load_entries(user_id, include_special=True)
+        index_overrides: dict[str, tuple[str, list[str]]] = {}
         added = 0
         for entry in entries:
             topic_entries = existing_by_topic.setdefault(entry.topic, [])
@@ -319,10 +368,12 @@ class MemoryStore:
                 continue
             self.apply_supersede_if_needed(existing_by_topic, entry)
             topic_entries.append(entry)
+            index_overrides[entry.id] = (entry.index_brief, entry.index_keywords)
             added += 1
         for topic, entries_for_topic in existing_by_topic.items():
             self.write_topic_entries(user_id, topic, entries_for_topic)
         self.compact(user_id)
+        self.rebuild_index(user_id, index_overrides=index_overrides)
         return added
 
     def has_duplicate(self, existing: list[MemoryEntry], candidate: MemoryEntry) -> bool:
@@ -366,7 +417,11 @@ class MemoryStore:
         if supersedes:
             candidate.metadata["supersedes"] = ", ".join(supersedes)
 
-    def rebuild_index(self, user_id: str | None = None) -> str:
+    def rebuild_index(
+        self,
+        user_id: str | None = None,
+        index_overrides: dict[str, tuple[str, list[str]]] | None = None,
+    ) -> str:
         self.initialize_files_only(user_id)
         entries_by_topic = self.load_entries(user_id)
         lines = [
@@ -386,11 +441,12 @@ class MemoryStore:
                 lines.append("- No active memory.")
             else:
                 for entry in topic_entries:
-                    summary = self.entry_summary(entry)
-                    lines.append(
-                        f"- `{entry.status}` {summary} -> "
-                        f"{filename}#{entry.id}"
+                    item = self.index_item_for_entry(
+                        entry,
+                        filename,
+                        index_overrides or {},
                     )
+                    lines.extend(self.serialize_index_item(item))
             lines.append("")
 
         text = "\n".join(lines).strip() + "\n"
@@ -420,6 +476,70 @@ class MemoryStore:
             "",
         )
         return first_line[:160]
+
+    def make_index_brief(self, content: str) -> str:
+        first_line = next(
+            (line.strip() for line in content.splitlines() if line.strip()),
+            "",
+        )
+        return first_line[:160]
+
+    def make_index_keywords(
+        self,
+        content: str,
+        topic: str | None = None,
+        kind: str | None = None,
+        limit: int = 12,
+    ) -> list[str]:
+        text = " ".join(part for part in [topic, kind, content] if part)
+        raw_terms = re.findall(
+            r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}",
+            text,
+        )
+        keywords = []
+        seen = set()
+        for term in raw_terms:
+            normalized = term.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            keywords.append(term[:32])
+            if len(keywords) >= limit:
+                break
+        return keywords
+
+    def index_item_for_entry(
+        self,
+        entry: MemoryEntry,
+        filename: str,
+        index_overrides: dict[str, tuple[str, list[str]]],
+    ) -> MemoryIndexItem:
+        brief, keywords = index_overrides.get(entry.id, ("", []))
+        brief = brief or entry.index_brief or self.entry_summary(entry)
+        keywords = (
+            keywords
+            or entry.index_keywords
+            or self.make_index_keywords(entry.body, entry.topic, entry.kind)
+        )
+        return MemoryIndexItem(
+            id=entry.id,
+            topic=entry.topic,
+            status=entry.status,
+            kind=entry.kind,
+            ref=f"{filename}#{entry.id}",
+            brief=brief,
+            keywords=keywords,
+        )
+
+    def serialize_index_item(self, item: MemoryIndexItem) -> list[str]:
+        keywords = ",".join(item.keywords)
+        return [
+            (
+                f"- id={item.id} topic={item.topic} status={item.status} "
+                f"kind={item.kind} ref={item.ref} keywords={keywords}"
+            ),
+            f"  brief: {item.brief}",
+        ]
 
     def compact(self, user_id: str | None = None) -> dict[str, int]:
         if not self.enabled:
@@ -495,68 +615,126 @@ class MemoryStore:
     ) -> str:
         if not self.enabled:
             return ""
-        entries_by_topic = self.load_entries(user_id)
-        candidates: list[tuple[int, MemoryEntry]] = []
-        for topic, entries in entries_by_topic.items():
-            for entry in entries:
-                if entry.status not in ACTIVE_STATUSES:
-                    continue
-                score = self.score_entry(query, entry)
-                if score > 0:
-                    candidates.append((score, entry))
+        self.initialize_user(user_id)
+        index_text = self.index_path(user_id).read_text(encoding="utf-8")
+        index_items = [
+            item
+            for item in parse_memory_index(index_text)
+            if item.status in ACTIVE_STATUSES
+        ]
+        if not index_items:
+            index_text = self.rebuild_index(user_id)
+            index_items = [
+                item
+                for item in parse_memory_index(index_text)
+                if item.status in ACTIVE_STATUSES
+            ]
+
+        candidates: list[tuple[int, MemoryIndexItem]] = []
+        for item in index_items:
+            score = self.score_index_item(query, item)
+            if score > 0:
+                candidates.append((score, item))
 
         candidates.sort(key=lambda item: item[0], reverse=True)
-        selected = [entry for _, entry in candidates[:limit]]
+        selected_items = [item for _, item in candidates[:limit]]
+        selected = self.load_entries_for_index_items(user_id, selected_items)
         if not selected:
             return ""
 
         self.mark_entries_used(user_id, selected)
         lines = [
-            "# Relevant Memory Brief",
-            "以下是用户长期记忆中与本次问题相关的内容。若与用户最新指令冲突，以用户最新指令为准。",
+            "# Relevant Long-Term Memory",
+            "以下是与本次问题相关的长期记忆。若与用户最新指令冲突，以用户最新指令为准。",
             "",
         ]
         for entry in selected:
             stale_note = "（可能过期）" if entry.status == "stale" else ""
-            lines.append(
-                f"- [{entry.topic}#{entry.id}]{stale_note} "
-                f"{self.entry_summary(entry)}"
+            lines.extend(
+                [
+                    f"## {entry.topic}#{entry.id}{stale_note}",
+                    f"status: {entry.status}",
+                    f"kind: {entry.kind}",
+                    "",
+                    entry.body,
+                    "",
+                ]
             )
         return "\n".join(lines)
 
-    def score_entry(self, query: str, entry: MemoryEntry) -> int:
-        haystack = f"{entry.topic} {entry.kind} {entry.body}".lower()
+    def score_index_item(self, query: str, item: MemoryIndexItem) -> int:
+        haystack = (
+            f"{item.topic} {item.kind} {' '.join(item.keywords)} {item.brief}"
+        ).lower()
         query_lower = query.lower()
         terms = set(re.findall(r"[A-Za-z0-9_]{2,}|[\u4e00-\u9fff]{2,}", query_lower))
         score = 0
-        if entry.status == "active":
-            if entry.topic in {"user-profile", "finance-style", "workflows"}:
+        if item.status == "active":
+            if item.topic in {"user-profile", "finance-style", "workflows"}:
                 score += 2
-            elif entry.topic == "financial-insights":
+            elif item.topic == "financial-insights":
                 score += 1
         for term in terms:
             if term in haystack:
                 score += 3
-        if entry.status == "stale":
+        if item.status == "stale":
             score -= 2
         return score
+
+    def load_entries_for_index_items(
+        self,
+        user_id: str | None,
+        items: list[MemoryIndexItem],
+    ) -> list[MemoryEntry]:
+        selected: list[MemoryEntry] = []
+        items_by_topic: dict[str, list[MemoryIndexItem]] = {}
+        seen_refs = set()
+        for item in items:
+            if item.ref in seen_refs:
+                continue
+            seen_refs.add(item.ref)
+            topic = self.topic_from_ref(item.ref, item.topic)
+            if topic not in TOPIC_FILES:
+                continue
+            items_by_topic.setdefault(topic, []).append(item)
+
+        for topic, topic_items in items_by_topic.items():
+            entries = {
+                entry.id: entry
+                for entry in parse_memory_entries(self.read_topic(user_id, topic), topic)
+            }
+            for item in topic_items:
+                entry = entries.get(item.id)
+                if entry and entry.status in ACTIVE_STATUSES:
+                    selected.append(entry)
+        return selected
+
+    def topic_from_ref(self, ref: str, fallback_topic: str) -> str:
+        filename = ref.split("#", 1)[0]
+        try:
+            return self.topic_from_name(filename)
+        except ValueError:
+            return fallback_topic
 
     def mark_entries_used(
         self,
         user_id: str | None,
         selected: list[MemoryEntry],
     ) -> None:
-        selected_ids = {entry.id for entry in selected}
-        entries_by_topic = self.load_entries(user_id, include_special=True)
-        for entries in entries_by_topic.values():
+        selected_ids_by_topic: dict[str, set[str]] = {}
+        for entry in selected:
+            selected_ids_by_topic.setdefault(entry.topic, set()).add(entry.id)
+
+        for topic, selected_ids in selected_ids_by_topic.items():
+            if topic not in ALL_TOPIC_FILES:
+                continue
+            entries = parse_memory_entries(self.read_topic(user_id, topic), topic)
             for entry in entries:
                 if entry.id in selected_ids:
                     entry.metadata["last_used_at"] = today_iso()
                     use_count = parse_int(entry.metadata.get("use_count"), 0)
                     entry.metadata["use_count"] = str(use_count + 1)
-        for topic, entries in entries_by_topic.items():
             self.write_topic_entries(user_id, topic, entries)
-        self.rebuild_index(user_id)
 
     async def run_auto_update(self, user_id: str | None = None) -> dict[str, Any]:
         if not self.enabled:
@@ -616,7 +794,16 @@ class MemoryStore:
             if not any(marker in content for marker in EXPLICIT_MEMORY_MARKERS):
                 continue
             topic, kind = self.classify_memory(content)
-            entries.append(self.make_entry(topic, kind, content, confidence=0.82))
+            entries.append(
+                self.make_entry(
+                    topic,
+                    kind,
+                    content,
+                    confidence=0.82,
+                    index_brief=self.make_index_brief(content),
+                    index_keywords=self.make_index_keywords(content, topic, kind),
+                )
+            )
         return entries
 
     async def extract_llm_entries(self, messages: list[dict]) -> list[MemoryEntry]:
@@ -631,7 +818,8 @@ class MemoryStore:
             "你是金融问答产品的长期记忆整理器。请从新增对话中抽取未来有用的长期记忆。\n"
             "只抽取用户金融偏好、用户长期画像、稳定的金融研究结论、资料整理工作流。\n"
             "不要抽取账户信息、敏感信息、一次性任务、未经来源支撑的短期行情判断。\n"
-            "返回 JSON 数组，每项字段：topic, kind, content, confidence, as_of_date, expires_at。\n"
+            "返回 JSON 数组，每项字段：topic, kind, content, brief, keywords, confidence, as_of_date, expires_at。\n"
+            "content 是完整记忆正文；brief 是不超过 80 字的检索摘要；keywords 是 3-8 个关键词数组。\n"
             "topic 只能是 user-profile、financial-insights、finance-style、workflows。"
         )
         try:
@@ -669,6 +857,22 @@ class MemoryStore:
                 metadata["as_of_date"] = str(item["as_of_date"])
             if item.get("expires_at"):
                 metadata["expires_at"] = str(item["expires_at"])
+            brief = str(item.get("brief") or "").strip()
+            raw_keywords = item.get("keywords") or []
+            if isinstance(raw_keywords, str):
+                keywords = [
+                    keyword.strip()
+                    for keyword in raw_keywords.split(",")
+                    if keyword.strip()
+                ]
+            elif isinstance(raw_keywords, list):
+                keywords = [
+                    str(keyword).strip()
+                    for keyword in raw_keywords
+                    if str(keyword).strip()
+                ]
+            else:
+                keywords = []
             entries.append(
                 self.make_entry(
                     topic=topic,
@@ -676,6 +880,9 @@ class MemoryStore:
                     content=content,
                     confidence=confidence,
                     extra_metadata=metadata,
+                    index_brief=brief[:160] or self.make_index_brief(content),
+                    index_keywords=keywords
+                    or self.make_index_keywords(content, topic, kind),
                 )
             )
         return entries
@@ -704,6 +911,8 @@ class MemoryStore:
         content: str,
         confidence: float,
         extra_metadata: dict[str, str] | None = None,
+        index_brief: str = "",
+        index_keywords: list[str] | None = None,
     ) -> MemoryEntry:
         today = today_iso()
         metadata = {
@@ -727,7 +936,14 @@ class MemoryStore:
                 {key: value for key, value in extra_metadata.items() if value}
             )
         entry_id = f"mem_{now_id_stamp()}_{slugify(content)}"
-        return MemoryEntry(id=entry_id, topic=topic, metadata=metadata, body=content)
+        return MemoryEntry(
+            id=entry_id,
+            topic=topic,
+            metadata=metadata,
+            body=content,
+            index_brief=index_brief,
+            index_keywords=index_keywords or [],
+        )
 
     def get_index_response(self, user_id: str | None = None) -> dict[str, Any]:
         if not self.enabled:
