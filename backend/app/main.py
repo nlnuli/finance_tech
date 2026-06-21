@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
+from .memory.routes import router as memory_router
 from .runtime import build_app_services
 from .stream import router as chat_router
 from .thread_routes import router as thread_router
@@ -39,6 +40,7 @@ app.include_router(chat_router)
 app.include_router(thread_router)
 app.include_router(upload_router)
 app.include_router(tools_router)
+app.include_router(memory_router)
 
 
 @app.exception_handler(RequestValidationError)

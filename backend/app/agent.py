@@ -1,4 +1,4 @@
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 
 REACT_PROMPT = """
@@ -50,12 +50,22 @@ class ChatStrategy:
         self.react_graph = react_graph
         self.plan_solve_graph = plan_solve_graph
 
-    def select_graph_input(self, message: str, mode: str = "react"):
+    def select_graph_input(
+        self,
+        message: str,
+        mode: str = "react",
+        memory_brief: str = "",
+    ):
+        messages = []
+        if memory_brief:
+            messages.append(SystemMessage(content=memory_brief))
+        messages.append(HumanMessage(content=message))
+
         if mode == "chat":
             return (
                 self.chat_graph,
                 {
-                    "messages": [HumanMessage(content=message)],
+                    "messages": messages,
                 },
                 "chat",
             )
@@ -64,7 +74,7 @@ class ChatStrategy:
             return (
                 self.plan_solve_graph,
                 {
-                    "messages": [HumanMessage(content=message)],
+                    "messages": messages,
                     "plan": [],
                     "current_step": 0,
                     "observations": [],
@@ -75,7 +85,7 @@ class ChatStrategy:
         return (
             self.react_graph,
             {
-                "messages": [HumanMessage(content=message)],
+                "messages": messages,
             },
             "react",
         )

@@ -213,7 +213,13 @@ def resolve_run_output_dir(
 ) -> Path:
     if not archive:
         return base_output_dir
-    return base_output_dir / "runs" / safe_slug(str(run_metadata["run_name"]))
+    base_run_dir = base_output_dir / "runs" / safe_slug(str(run_metadata["run_name"]))
+    run_dir = base_run_dir
+    suffix = 2
+    while run_dir.exists():
+        run_dir = base_run_dir.with_name(f"{base_run_dir.name}-{suffix}")
+        suffix += 1
+    return run_dir
 
 
 def append_run_index(
@@ -252,19 +258,30 @@ def append_run_index(
         file.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     index_csv = base_output_dir / "runs_index.csv"
-    flat_row = {
-        **{key: value for key, value in row.items() if key != "variants"},
-        **{
-            f"variant_{key}": value
-            for key, value in (run_metadata.get("variants") or {}).items()
-        },
-    }
-    write_header = not index_csv.exists()
-    with index_csv.open("a", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=list(flat_row.keys()))
-        if write_header:
-            writer.writeheader()
-        writer.writerow(flat_row)
+    rows = [
+        json.loads(line)
+        for line in index_jsonl.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    flat_rows = []
+    fieldnames: list[str] = []
+    for item in rows:
+        flat_row = {
+            **{key: value for key, value in item.items() if key != "variants"},
+            **{
+                f"variant_{key}": value
+                for key, value in (item.get("variants") or {}).items()
+            },
+        }
+        flat_rows.append(flat_row)
+        for key in flat_row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+
+    with index_csv.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(flat_rows)
 
 
 async def run_case_with_timeout(
@@ -368,6 +385,7 @@ async def run_evaluation(args: argparse.Namespace) -> None:
         run_metadata=run_metadata,
         archive=archive,
     )
+    run_metadata["output_dir"] = str(run_output_dir)
 
     console.print(
         f"[bold]Running Ragas RAG eval[/bold]: cases={len(cases)}, "

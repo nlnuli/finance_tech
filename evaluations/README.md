@@ -65,9 +65,41 @@ Run the RAG evaluation:
 ```bash
 .venv/bin/python -m evaluations.ragas_rag_eval.cli run \
   --cases evaluations/datasets/ragas_generated_cases.jsonl \
-  --output-dir evaluations/results/ragas_rag_eval
+  --output-dir evaluations/results/ragas_rag_eval \
+  --run-name baseline_k4 \
+  --variant retrieval_k=4 \
+  --variant chunk_size=1000 \
+  --variant chunk_overlap=200
+```
+
+Run controlled retrieval-k experiments with the same case file:
+
+```bash
+.venv/bin/python -m evaluations.ragas_rag_eval.cli run \
+  --cases evaluations/datasets/ragas_generated_cases.jsonl \
+  --output-dir evaluations/results/ragas_rag_eval \
+  --retrieval-k 8 \
+  --run-name retrieval_k8 \
+  --variant retrieval_k=8 \
+  --variant chunk_size=1000 \
+  --variant chunk_overlap=200
+```
+
+By default each run is archived under:
+
+```text
+evaluations/results/ragas_rag_eval/runs/<run-name>/
+```
+
+The parent result directory also keeps comparison indexes:
+
+```text
+evaluations/results/ragas_rag_eval/runs_index.csv
+evaluations/results/ragas_rag_eval/runs_index.jsonl
 ```
 
 The report includes Ragas metrics for generation quality and factual grounding,
 plus custom metrics for Qdrant retrieval hit rate, actual `rag_search` usage,
-empty retrievals, timeouts, failures, and latency.
+empty retrievals, timeouts, failures, and latency. Ragas metric averages ignore
+missing or NaN scores, and `report.md` includes a metric coverage table so a
+missing judge result is not confused with a real zero score.

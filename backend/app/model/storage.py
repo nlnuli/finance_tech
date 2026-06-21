@@ -116,6 +116,26 @@ def list_messages(thread_id: str) -> list[dict]:
         connection.close()
 
 
+def list_messages_after(message_id: int, limit: int = 200) -> list[dict]:
+    prepare_database()
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT * FROM messages
+                WHERE id > %s
+                ORDER BY id ASC
+                LIMIT %s
+                """,
+                (message_id, limit),
+            )
+            return cursor.fetchall()
+    finally:
+        connection.close()
+
+
 def save_file_record(
     assistant_id: str,
     original_name: str,

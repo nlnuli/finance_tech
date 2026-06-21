@@ -173,6 +173,7 @@ def write_markdown_report(
                 "",
                 f"- Run name: `{run_metadata.get('run_name')}`",
                 f"- Started at: `{run_metadata.get('started_at')}`",
+                f"- Output dir: `{run_metadata.get('output_dir')}`",
                 f"- Case file: `{run_metadata.get('case_path')}`",
                 f"- Case file SHA256: `{run_metadata.get('case_file_sha256')}`",
                 f"- Assistant id: `{run_metadata.get('assistant_id')}`",

@@ -7,6 +7,7 @@ __pycache__/
 venv_*/
 venv/
 backend/.env
+backend/memory/
 backend/uploads/
 evaluations/results/
 .playwright-cli/

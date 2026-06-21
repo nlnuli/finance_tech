@@ -7,6 +7,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from .checkpoint import get_checkpointer
+from .config import get_settings
+from .memory.service import get_memory_store, schedule_auto_memory_update
 from .model.storage import ensure_thread, save_message
 from .runtime import get_app_services
 from .schemas import ChatStreamRequest
@@ -184,6 +186,22 @@ def build_graph_config(thread_id: str, graph_name: str) -> dict:
     return config
 
 
+def get_request_user_id(request: ChatStreamRequest) -> str:
+    settings = get_settings()
+    return request.user_id or settings.memory_default_user_id
+
+
+def get_memory_brief(user_id: str, message: str) -> str:
+    try:
+        return get_memory_store().retrieve_memory_brief(
+            query=message,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        print(f"memory retrieval failed: {exc}")
+        return ""
+
+
 async def chat_event_stream(
     app_request: Request,
     request: ChatStreamRequest,
@@ -197,6 +215,7 @@ async def chat_event_stream(
     started_step_indexes = set()
     finished_step_indexes = set()
     tool_event_depths: dict[str, int] = {}
+    user_id = get_request_user_id(request)
 
     yield make_sse_event("metadata", {"thread_id": thread_id})
 
@@ -205,9 +224,11 @@ async def chat_event_stream(
         title = request.message[:50] if is_new_thread else None
         ensure_thread(thread_id, title=title)
         save_message(thread_id, "user", request.message)
+        memory_brief = get_memory_brief(user_id, request.message)
         graph, graph_input, graph_name = chat_strategy.select_graph_input(
             request.message,
             mode=request.mode,
+            memory_brief=memory_brief,
         )
 
         recovered_invalid_history = False
@@ -334,6 +355,7 @@ async def chat_event_stream(
 
         if final_answer:
             save_message(thread_id, "assistant", final_answer)
+            schedule_auto_memory_update(user_id)
 
         yield make_sse_event("message", {"content": final_answer})
         yield make_sse_event("end", {"thread_id": thread_id})
