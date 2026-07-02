@@ -32,7 +32,26 @@ CREATE TABLE IF NOT EXISTS files (
     file_path VARCHAR(500) NOT NULL,
     content_type VARCHAR(100),
     size_bytes BIGINT NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'ready',
+    page_count INT,
+    chunk_count INT NOT NULL DEFAULT 0,
+    artifact_dir VARCHAR(500),
+    processing_error LONGTEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_files_assistant_id (assistant_id)
 )
 """
+
+
+FILE_COLUMN_MIGRATIONS = {
+    "status": "status VARCHAR(32) NOT NULL DEFAULT 'ready'",
+    "page_count": "page_count INT",
+    "chunk_count": "chunk_count INT NOT NULL DEFAULT 0",
+    "artifact_dir": "artifact_dir VARCHAR(500)",
+    "processing_error": "processing_error LONGTEXT",
+    "updated_at": (
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP "
+        "ON UPDATE CURRENT_TIMESTAMP"
+    ),
+}

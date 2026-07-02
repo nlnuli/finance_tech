@@ -3,8 +3,8 @@ import operator
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from ..config import get_settings
 from ..vectorstore import similarity_search
-
 
 ALLOWED_OPERATORS = {
     ast.Add: operator.add,
@@ -29,23 +29,32 @@ def format_search_results(results: list[dict]) -> str:
     parts = []
     for index, item in enumerate(results, start=1):
         metadata = item["metadata"]
-        parts.append(
-            f"[{index}] "
-            f"filename={metadata.get('filename')}, "
-            f"file_id={metadata.get('file_id')}, "
-            f"chunk_index={metadata.get('chunk_index')}\n"
-            f"{item['content']}"
-        )
+        source_details = [
+            f"filename={metadata.get('filename')}",
+            f"file_id={metadata.get('file_id')}",
+            f"chunk_index={metadata.get('chunk_index')}",
+        ]
+        if metadata.get("content_type"):
+            source_details.append(f"content_type={metadata.get('content_type')}")
+        if metadata.get("page_start"):
+            page_value = str(metadata.get("page_start"))
+            if metadata.get("page_end") != metadata.get("page_start"):
+                page_value += f"-{metadata.get('page_end')}"
+            source_details.append(f"pages={page_value}")
+        if metadata.get("table_id"):
+            source_details.append(f"table_id={metadata.get('table_id')}")
+        parts.append(f"[{index}] {', '.join(source_details)}\n" f"{item['content']}")
 
     return "\n\n".join(parts)
 
 
 def rag_search(query: str) -> str:
     try:
+        settings = get_settings()
         results = similarity_search(
             query=query,
             assistant_id="default",
-            k=4,
+            k=settings.rag_final_count,
         )
         return format_search_results(results)
     except Exception:

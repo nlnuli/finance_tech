@@ -31,7 +31,13 @@ class FileResponse(BaseModel):
     file_path: str
     content_type: Optional[str] = None
     size_bytes: int
+    status: str = "ready"
+    page_count: Optional[int] = None
+    chunk_count: int = 0
+    artifact_dir: Optional[str] = None
+    processing_error: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class ChunkResponse(BaseModel):
@@ -39,9 +45,27 @@ class ChunkResponse(BaseModel):
     metadata: dict
 
 
+class ProcessingSummaryResponse(BaseModel):
+    status: str
+    page_count: int
+    chunk_count: int
+    text_block_count: int = 0
+    table_count: int = 0
+    physical_table_count: int = 0
+    logical_table_count: int = 0
+    stitched_table_count: int = 0
+    form_field_count: int = 0
+    fusion_warning_count: int = 0
+    duration_seconds: float = 0.0
+    ocr_processor_id: Optional[str] = None
+    form_processor_id: Optional[str] = None
+    artifacts: dict[str, str] = Field(default_factory=dict)
+
+
 class FileUploadResponse(BaseModel):
     file: FileResponse
     chunks: list[ChunkResponse]
+    processing_summary: ProcessingSummaryResponse
 
 
 class ChatStreamRequest(BaseModel):

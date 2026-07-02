@@ -143,6 +143,7 @@ def save_file_record(
     file_path: str,
     content_type: Optional[str],
     size_bytes: int,
+    status: str = "ready",
 ) -> dict:
     prepare_database()
 
@@ -157,9 +158,10 @@ def save_file_record(
                     saved_name,
                     file_path,
                     content_type,
-                    size_bytes
+                    size_bytes,
+                    status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     assistant_id,
@@ -168,6 +170,7 @@ def save_file_record(
                     file_path,
                     content_type,
                     size_bytes,
+                    status,
                 ),
             )
             file_id = cursor.lastrowid
@@ -175,6 +178,43 @@ def save_file_record(
     finally:
         connection.close()
 
+    return get_file_record(file_id)
+
+
+def update_file_processing(
+    file_id: int,
+    status: str,
+    page_count: int | None = None,
+    chunk_count: int | None = None,
+    artifact_dir: str | None = None,
+    processing_error: str | None = None,
+) -> dict:
+    prepare_database()
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE files
+                SET status = %s,
+                    page_count = COALESCE(%s, page_count),
+                    chunk_count = COALESCE(%s, chunk_count),
+                    artifact_dir = COALESCE(%s, artifact_dir),
+                    processing_error = %s
+                WHERE id = %s
+                """,
+                (
+                    status,
+                    page_count,
+                    chunk_count,
+                    artifact_dir,
+                    processing_error,
+                    file_id,
+                ),
+            )
+        connection.commit()
+    finally:
+        connection.close()
     return get_file_record(file_id)
 
 
@@ -186,5 +226,38 @@ def get_file_record(file_id: int) -> Optional[dict]:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM files WHERE id = %s", (file_id,))
             return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def list_file_records(
+    assistant_id: str | None = None,
+    statuses: tuple[str, ...] = ("ready",),
+    after_file_id: int | None = None,
+) -> list[dict]:
+    prepare_database()
+    conditions = []
+    parameters: list[object] = []
+
+    if assistant_id:
+        conditions.append("assistant_id = %s")
+        parameters.append(assistant_id)
+    if statuses:
+        placeholders = ", ".join(["%s"] * len(statuses))
+        conditions.append(f"status IN ({placeholders})")
+        parameters.extend(statuses)
+    if after_file_id is not None:
+        conditions.append("id > %s")
+        parameters.append(after_file_id)
+
+    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT * FROM files{where_clause} ORDER BY id ASC",
+                tuple(parameters),
+            )
+            return cursor.fetchall()
     finally:
         connection.close()

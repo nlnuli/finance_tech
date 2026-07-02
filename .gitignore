@@ -9,6 +9,7 @@ venv/
 backend/.env
 backend/memory/
 backend/uploads/
+backend/processed/
 evaluations/results/
 .playwright-cli/
 frontend-*-check*.png

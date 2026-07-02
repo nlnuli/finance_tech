@@ -1,25 +1,26 @@
+import logging
+import time
 from functools import lru_cache
+from typing import Iterator, Sequence
 from uuid import NAMESPACE_URL, uuid5
 
 from langchain_openai import OpenAIEmbeddings
-from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 from .config import get_settings
 
+logger = logging.getLogger(__name__)
 
 EMBEDDING_SIZE = 1536
 ASSISTANT_ID_PAYLOAD_KEY = "metadata.assistant_id"
+FILE_ID_PAYLOAD_KEY = "metadata.file_id"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
 def get_embedding_api_key() -> str | None:
     settings = get_settings()
-    return (
-        settings.openai_embedding_api_key
-        or settings.openai_official_api_key
-    )
+    return settings.openai_embedding_api_key or settings.openai_official_api_key
 
 
 def validate_vectorstore_settings() -> None:
@@ -30,94 +31,222 @@ def validate_vectorstore_settings() -> None:
             "OPENAI_EMBEDDING_API_KEY or OPENAI_OFFICIAL_API_KEY is not set "
             "in backend/.env"
         )
-
     if not settings.qdrant_url:
         raise RuntimeError("QDRANT_URL is not set in backend/.env")
-
     if not settings.qdrant_api_key:
         raise RuntimeError("QDRANT_API_KEY is not set in backend/.env")
+    if not settings.qdrant_cloud_inference:
+        raise RuntimeError(
+            "QDRANT_CLOUD_INFERENCE must be enabled for server-side BM25"
+        )
 
 
 @lru_cache(maxsize=1)
 def get_embeddings() -> OpenAIEmbeddings:
     validate_vectorstore_settings()
     settings = get_settings()
-    options = {
-        "model": settings.openai_embedding_model,
-        "api_key": get_embedding_api_key(),
-        "base_url": settings.openai_embedding_base_url or DEFAULT_OPENAI_BASE_URL,
-    }
-
-    return OpenAIEmbeddings(**options)
+    return OpenAIEmbeddings(
+        model=settings.openai_embedding_model,
+        api_key=get_embedding_api_key(),
+        base_url=settings.openai_embedding_base_url or DEFAULT_OPENAI_BASE_URL,
+    )
 
 
 @lru_cache(maxsize=1)
 def get_qdrant_client() -> QdrantClient:
     validate_vectorstore_settings()
     settings = get_settings()
-
     return QdrantClient(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key,
+        cloud_inference=settings.qdrant_cloud_inference,
     )
 
 
-def ensure_collection_exists() -> None:
-    settings = get_settings()
-    client = get_qdrant_client()
+def _collection_name(collection_name: str | None = None) -> str:
+    return collection_name or get_settings().qdrant_collection
 
-    if not client.collection_exists(settings.qdrant_collection):
-        client.create_collection(
-            collection_name=settings.qdrant_collection,
-            vectors_config=models.VectorParams(
-                size=EMBEDDING_SIZE,
-                distance=models.Distance.COSINE,
-            ),
+
+def _validate_collection_schema(collection_info: object) -> None:
+    settings = get_settings()
+    params = collection_info.config.params
+    dense_vectors = params.vectors
+    sparse_vectors = params.sparse_vectors or {}
+
+    if not isinstance(dense_vectors, dict):
+        raise RuntimeError(
+            "Qdrant collection uses an unnamed dense vector; create a new "
+            "hybrid collection instead of reusing the legacy collection"
         )
 
-    collection_info = client.get_collection(settings.qdrant_collection)
-    if ASSISTANT_ID_PAYLOAD_KEY in collection_info.payload_schema:
-        return
+    dense_config = dense_vectors.get(settings.qdrant_dense_vector_name)
+    if dense_config is None:
+        raise RuntimeError(
+            f"Qdrant collection is missing dense vector "
+            f"'{settings.qdrant_dense_vector_name}'"
+        )
+    if dense_config.size != EMBEDDING_SIZE:
+        raise RuntimeError(
+            f"Qdrant dense vector size is {dense_config.size}; "
+            f"expected {EMBEDDING_SIZE}"
+        )
+    if dense_config.distance != models.Distance.COSINE:
+        raise RuntimeError("Qdrant dense vector must use cosine distance")
 
-    client.create_payload_index(
-        collection_name=settings.qdrant_collection,
-        field_name=ASSISTANT_ID_PAYLOAD_KEY,
-        field_schema=models.PayloadSchemaType.KEYWORD,
-    )
+    sparse_config = sparse_vectors.get(settings.qdrant_bm25_vector_name)
+    if sparse_config is None:
+        raise RuntimeError(
+            f"Qdrant collection is missing sparse vector "
+            f"'{settings.qdrant_bm25_vector_name}'"
+        )
+    if sparse_config.modifier != models.Modifier.IDF:
+        raise RuntimeError("Qdrant BM25 sparse vector must use the IDF modifier")
 
 
-@lru_cache(maxsize=1)
-def get_vectorstore() -> QdrantVectorStore:
-    ensure_collection_exists()
+def ensure_collection_exists(collection_name: str | None = None) -> None:
     settings = get_settings()
+    client = get_qdrant_client()
+    target = _collection_name(collection_name)
 
-    return QdrantVectorStore(
-        client=get_qdrant_client(),
-        collection_name=settings.qdrant_collection,
-        embedding=get_embeddings(),
-    )
+    if not client.collection_exists(target):
+        client.create_collection(
+            collection_name=target,
+            vectors_config={
+                settings.qdrant_dense_vector_name: models.VectorParams(
+                    size=EMBEDDING_SIZE,
+                    distance=models.Distance.COSINE,
+                )
+            },
+            sparse_vectors_config={
+                settings.qdrant_bm25_vector_name: models.SparseVectorParams(
+                    modifier=models.Modifier.IDF,
+                )
+            },
+        )
+
+    collection_info = client.get_collection(target)
+    _validate_collection_schema(collection_info)
+    payload_schema = collection_info.payload_schema or {}
+    required_indexes = {
+        ASSISTANT_ID_PAYLOAD_KEY: models.PayloadSchemaType.KEYWORD,
+        FILE_ID_PAYLOAD_KEY: models.PayloadSchemaType.INTEGER,
+    }
+    for field_name, field_schema in required_indexes.items():
+        if field_name not in payload_schema:
+            client.create_payload_index(
+                collection_name=target,
+                field_name=field_name,
+                field_schema=field_schema,
+                wait=True,
+            )
 
 
 def make_chunk_point_id(chunk: dict) -> str:
     metadata = chunk["metadata"]
-    raw_id = f"file-{metadata['file_id']}-chunk-{metadata['chunk_index']}"
+    raw_id = metadata.get("chunk_id") or (
+        f"file-{metadata['file_id']}-chunk-{metadata['chunk_index']}"
+    )
     return str(uuid5(NAMESPACE_URL, raw_id))
 
 
-def add_chunks_to_vectorstore(chunks: list[dict]) -> None:
+def make_bm25_document(text: str) -> models.Document:
+    settings = get_settings()
+    return models.Document(
+        text=text,
+        model=settings.qdrant_bm25_model,
+        options={
+            "language": settings.qdrant_bm25_language,
+            "tokenizer": settings.qdrant_bm25_tokenizer,
+        },
+    )
+
+
+def _batches(items: Sequence[dict], size: int) -> Iterator[Sequence[dict]]:
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
+def add_chunks_to_vectorstore(
+    chunks: list[dict],
+    collection_name: str | None = None,
+) -> None:
     if not chunks:
         return
 
-    vectorstore = get_vectorstore()
-    texts = [chunk["content"] for chunk in chunks]
-    metadatas = [chunk["metadata"] for chunk in chunks]
-    ids = [make_chunk_point_id(chunk) for chunk in chunks]
+    settings = get_settings()
+    target = _collection_name(collection_name)
+    ensure_collection_exists(target)
+    client = get_qdrant_client()
+    embeddings = get_embeddings()
 
-    vectorstore.add_texts(
-        texts=texts,
-        metadatas=metadatas,
-        ids=ids,
+    for chunk_batch in _batches(chunks, settings.qdrant_upsert_batch_size):
+        texts = [chunk["content"] for chunk in chunk_batch]
+        dense_vectors = embeddings.embed_documents(texts)
+        if len(dense_vectors) != len(chunk_batch):
+            raise RuntimeError(
+                "Dense embedding response count does not match chunk count"
+            )
+
+        points = []
+        for chunk, dense_vector in zip(chunk_batch, dense_vectors, strict=True):
+            points.append(
+                models.PointStruct(
+                    id=make_chunk_point_id(chunk),
+                    vector={
+                        settings.qdrant_dense_vector_name: dense_vector,
+                        settings.qdrant_bm25_vector_name: make_bm25_document(
+                            chunk["content"]
+                        ),
+                    },
+                    payload={
+                        "content": chunk["content"],
+                        "metadata": chunk["metadata"],
+                    },
+                )
+            )
+        client.upsert(collection_name=target, points=points, wait=True)
+
+
+def _file_filter(assistant_id: str, file_id: int) -> models.Filter:
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key=ASSISTANT_ID_PAYLOAD_KEY,
+                match=models.MatchValue(value=assistant_id),
+            ),
+            models.FieldCondition(
+                key=FILE_ID_PAYLOAD_KEY,
+                match=models.MatchValue(value=file_id),
+            ),
+        ]
     )
+
+
+def delete_file_chunks(
+    assistant_id: str,
+    file_id: int,
+    collection_name: str | None = None,
+) -> None:
+    get_qdrant_client().delete(
+        collection_name=_collection_name(collection_name),
+        points_selector=models.FilterSelector(
+            filter=_file_filter(assistant_id, file_id)
+        ),
+        wait=True,
+    )
+
+
+def count_file_chunks(
+    assistant_id: str,
+    file_id: int,
+    collection_name: str | None = None,
+) -> int:
+    result = get_qdrant_client().count(
+        collection_name=_collection_name(collection_name),
+        count_filter=_file_filter(assistant_id, file_id),
+        exact=True,
+    )
+    return result.count
 
 
 def similarity_search(
@@ -125,6 +254,9 @@ def similarity_search(
     assistant_id: str = "default",
     k: int = 4,
 ) -> list[dict]:
+    settings = get_settings()
+    target = _collection_name()
+    ensure_collection_exists(target)
     assistant_filter = models.Filter(
         must=[
             models.FieldCondition(
@@ -133,17 +265,53 @@ def similarity_search(
             )
         ]
     )
+    started_at = time.perf_counter()
 
-    docs = get_vectorstore().similarity_search(
-        query=query,
-        k=k,
-        filter=assistant_filter,
+    try:
+        dense_query = get_embeddings().embed_query(query)
+        response = get_qdrant_client().query_points(
+            collection_name=target,
+            prefetch=[
+                models.Prefetch(
+                    query=dense_query,
+                    using=settings.qdrant_dense_vector_name,
+                    filter=assistant_filter,
+                    limit=max(k, settings.rag_dense_candidate_count),
+                ),
+                models.Prefetch(
+                    query=make_bm25_document(query),
+                    using=settings.qdrant_bm25_vector_name,
+                    filter=assistant_filter,
+                    limit=max(k, settings.rag_bm25_candidate_count),
+                ),
+            ],
+            query=models.RrfQuery(rrf=models.Rrf()),
+            limit=k,
+            with_payload=True,
+            with_vectors=False,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Hybrid retrieval failed assistant_id=%s error_type=%s",
+            assistant_id,
+            exc.__class__.__name__,
+        )
+        raise
+
+    results = []
+    for point in response.points:
+        payload = dict(point.payload or {})
+        results.append(
+            {
+                "content": str(payload.get("content") or ""),
+                "metadata": dict(payload.get("metadata") or {}),
+                "score": point.score,
+            }
+        )
+    logger.info(
+        "Hybrid retrieval completed assistant_id=%s result_count=%s duration_ms=%.1f",
+        assistant_id,
+        len(results),
+        (time.perf_counter() - started_at) * 1000,
     )
-
-    return [
-        {
-            "content": doc.page_content,
-            "metadata": doc.metadata,
-        }
-        for doc in docs
-    ]
+    return results

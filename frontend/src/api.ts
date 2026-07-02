@@ -28,17 +28,41 @@ export type UploadedFile = {
   file_path: string;
   content_type: string | null;
   size_bytes: number;
+  status: "processing" | "ready" | "failed";
+  page_count: number | null;
+  chunk_count: number;
+  artifact_dir: string | null;
+  processing_error: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 export type FileChunk = {
   content: string;
-  metadata: Record<string, string | number>;
+  metadata: Record<string, unknown>;
+};
+
+export type ProcessingSummary = {
+  status: "ready";
+  page_count: number;
+  chunk_count: number;
+  text_block_count: number;
+  table_count: number;
+  physical_table_count: number;
+  logical_table_count: number;
+  stitched_table_count: number;
+  form_field_count: number;
+  fusion_warning_count: number;
+  duration_seconds: number;
+  ocr_processor_id: string | null;
+  form_processor_id: string | null;
+  artifacts: Record<string, string>;
 };
 
 export type FileUploadResponse = {
   file: UploadedFile;
   chunks: FileChunk[];
+  processing_summary: ProcessingSummary;
 };
 
 export type ToolInfo = {

@@ -6,12 +6,26 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemM
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from langgraph.prebuilt import create_react_agent
 
 from .checkpoint import get_checkpointer
 from .llm import get_llm
 
 
 MAX_PLAN_STEPS = 5
+PLAN_EXECUTOR_REACT_PROMPT = """
+你是计划执行器，也是一个可以调用外部工具的中文金融分析助手。
+
+你的任务是：每次只执行用户计划中的当前步骤，并输出这一阶段的观察结果。
+
+执行原则：
+1. 如果当前步骤需要实时信息、外部资料、文档检索、计算或数据查询，请调用合适工具。
+2. 如果当前步骤不需要工具，可以直接基于已有上下文给出观察结果。
+3. 不要执行当前步骤之外的计划内容。
+4. 不要编造工具没有返回的信息。
+5. 工具结果不足时，要说明限制，并给出谨慎观察。
+6. 输出应简洁，聚焦当前步骤的结论、依据和必要限制。
+"""
 
 
 class PlanSolveState(TypedDict):
@@ -41,6 +55,15 @@ def get_text(value: object) -> str:
         return json.dumps(value, ensure_ascii=False)
 
     return str(value)
+
+
+def get_last_message_text(value: object) -> str:
+    if isinstance(value, dict):
+        messages = value.get("messages")
+        if isinstance(messages, list) and messages:
+            return get_text(messages[-1]).strip()
+
+    return get_text(value).strip()
 
 
 def extract_json_text(text: str) -> str:
@@ -73,39 +96,6 @@ def parse_plan(text: str) -> list[str]:
     return lines[:MAX_PLAN_STEPS] or ["回答用户问题"]
 
 
-def parse_tool_decision(text: str) -> dict:
-    try:
-        data = json.loads(extract_json_text(text))
-        if isinstance(data, dict):
-            return data
-    except json.JSONDecodeError:
-        pass
-
-    return {
-        "tool": "none",
-        "input": {},
-        "answer": text.strip(),
-    }
-
-
-def get_tool_arg_names(tool: object) -> list[str]:
-    args = getattr(tool, "args", {})
-    if isinstance(args, dict):
-        return list(args.keys())
-    return []
-
-
-def normalize_tool_input(tool: object, tool_input: object) -> dict:
-    if isinstance(tool_input, dict):
-        return tool_input
-
-    arg_names = get_tool_arg_names(tool)
-    if len(arg_names) == 1:
-        return {arg_names[0]: str(tool_input)}
-
-    return {}
-
-
 class PlannerNode:
     def __init__(self):
         self.llm = get_llm()
@@ -133,9 +123,11 @@ class PlannerNode:
 
 class ExecutorNode:
     def __init__(self, tools: list):
-        self.llm = get_llm()
-        self.tools = {tool.name: tool for tool in tools}
-        self.tool_names = "、".join(self.tools.keys()) if self.tools else "无"
+        self.agent = create_react_agent(
+            get_llm(),
+            tools,
+            prompt=PLAN_EXECUTOR_REACT_PROMPT,
+        )
 
     async def __call__(self, state: PlanSolveState, config: RunnableConfig) -> dict:
         step_index = state.get("current_step", 0)
@@ -147,55 +139,27 @@ class ExecutorNode:
 
         question = get_latest_user_message(state["messages"])
         step = plan[step_index]
-        response = await self.llm.ainvoke(
-            [
-                SystemMessage(
-                    content=(
-                        "你是计划执行器。你每次只执行一个步骤。\n"
-                        f"可用工具：{self.tool_names}。\n"
-                        "如果需要工具，只返回 JSON："
-                        '{"tool":"工具名","input":{"参数名":"参数值"},"answer":""}\n'
-                        "如果不需要工具，只返回 JSON："
-                        '{"tool":"none","input":{},"answer":"你的观察结果"}\n'
-                        "不要返回 Markdown。"
+        response = await self.agent.ainvoke(
+            {
+                "messages": [
+                    HumanMessage(
+                        content=(
+                            f"用户问题：{question}\n"
+                            f"完整计划：{json.dumps(plan, ensure_ascii=False)}\n"
+                            f"已完成观察：{json.dumps(observations, ensure_ascii=False)}\n"
+                            f"当前步骤：{step}\n\n"
+                            "请只执行当前步骤，并返回该步骤的观察结果。"
+                        )
                     )
-                ),
-                HumanMessage(
-                    content=(
-                        f"用户问题：{question}\n"
-                        f"完整计划：{json.dumps(plan, ensure_ascii=False)}\n"
-                        f"已完成观察：{json.dumps(observations, ensure_ascii=False)}\n"
-                        f"当前步骤：{step}"
-                    )
-                ),
-            ],
+                ]
+            },
             config=config,
         )
 
-        decision = parse_tool_decision(get_text(response))
-        tool_name = str(decision.get("tool", "none"))
-
-        if tool_name not in self.tools:
-            observation = (
-                f"Step {step_index + 1}: {step}\n"
-                f"Observation: {decision.get('answer', '').strip()}"
-            )
-        else:
-            tool = self.tools[tool_name]
-            tool_input = normalize_tool_input(tool, decision.get("input") or {})
-
-            try:
-                tool_result = await tool.ainvoke(tool_input, config=config)
-                result_text = get_text(tool_result)
-            except Exception as exc:
-                result_text = f"{tool_name} error: {exc}"
-
-            observation = (
-                f"Step {step_index + 1}: {step}\n"
-                f"Tool: {tool_name}\n"
-                f"Input: {json.dumps(tool_input, ensure_ascii=False)}\n"
-                f"Result: {result_text}"
-            )
+        observation = (
+            f"Step {step_index + 1}: {step}\n"
+            f"Observation: {get_last_message_text(response)}"
+        )
 
         return {
             "current_step": step_index + 1,
