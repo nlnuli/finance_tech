@@ -18,8 +18,13 @@ export function ToolEvent({ message }: ToolEventProps) {
 
   return (
     <details className="tool-event">
-      <summary>{title}</summary>
+      <summary>
+        <CaretRight className="tool-event-caret" size={14} weight="bold" aria-hidden="true" />
+        <Wrench size={14} weight="bold" aria-hidden="true" />
+        <span>{title}</span>
+      </summary>
       <pre>{message.content || "..."}</pre>
     </details>
   );
 }
+import { CaretRight, Wrench } from "@phosphor-icons/react";

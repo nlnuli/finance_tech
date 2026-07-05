@@ -13,3 +13,4 @@ qdrant-client>=1.16,<2.0
 langchain-mcp-adapters>=0.2.2,<0.3
 mcp>=1.27.2,<2.0
 google-cloud-documentai>=3.7,<4.0
+PyJWT>=2.9,<3.0

@@ -45,7 +45,6 @@ def run_retrieval(
 ) -> list[RetrievedContext]:
     docs = similarity_search(
         query=query,
-        assistant_id=assistant_id,
         k=retrieval_k,
     )
     return docs_to_contexts(docs)

@@ -8,8 +8,34 @@ class CreateThreadRequest(BaseModel):
     title: Optional[str] = None
 
 
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    display_name: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class AuthRequest(BaseModel):
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=8)
+    display_name: Optional[str] = Field(default=None, max_length=255)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=1)
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
 class ThreadResponse(BaseModel):
     id: str
+    user_id: str
     title: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -25,6 +51,7 @@ class MessageResponse(BaseModel):
 
 class FileResponse(BaseModel):
     id: int
+    user_id: str
     assistant_id: str
     original_name: str
     saved_name: str
@@ -71,6 +98,5 @@ class FileUploadResponse(BaseModel):
 class ChatStreamRequest(BaseModel):
     message: str = Field(min_length=1)
     thread_id: Optional[str] = None
-    user_id: Optional[str] = None
     rag_enabled: bool = False
     mode: Literal["chat", "react", "plan_solve"] = "react"

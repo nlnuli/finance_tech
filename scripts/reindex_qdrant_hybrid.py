@@ -74,6 +74,7 @@ def load_chunks_for_file(
 ) -> tuple[list[dict], int]:
     file_id = int(file_record["id"])
     assistant_id = str(file_record["assistant_id"])
+    user_id = str(file_record.get("user_id") or "default")
     filename = str(file_record["original_name"])
     file_path = Path(file_record["file_path"])
     fused_path = artifact_path(file_record, "fused.json")
@@ -94,6 +95,7 @@ def load_chunks_for_file(
         chunks = build_document_chunks(
             unified,
             assistant_id,
+            user_id,
             logical_tables=table_stitching.logical_tables,
         )
         if persist_stitching:
@@ -129,6 +131,7 @@ def load_chunks_for_file(
         filename=filename,
         assistant_id=assistant_id,
         file_id=file_id,
+        user_id=user_id,
     )
     return chunks, 1 if text else 0
 
@@ -158,15 +161,15 @@ def reindex_file(
         file_record,
         persist_stitching=True,
     )
-    assistant_id = str(file_record["assistant_id"])
+    user_id = str(file_record.get("user_id") or "default")
     file_id = int(file_record["id"])
 
     for attempt in range(retries + 1):
         try:
-            delete_file_chunks(assistant_id, file_id, target_collection)
+            delete_file_chunks(user_id, file_id, target_collection)
             add_chunks_to_vectorstore(chunks, target_collection)
             indexed_count = count_file_chunks(
-                assistant_id,
+                user_id,
                 file_id,
                 target_collection,
             )
@@ -177,7 +180,7 @@ def reindex_file(
             break
         except Exception:
             try:
-                delete_file_chunks(assistant_id, file_id, target_collection)
+                delete_file_chunks(user_id, file_id, target_collection)
             except Exception:
                 pass
             if attempt >= retries:

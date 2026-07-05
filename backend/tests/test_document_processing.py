@@ -27,6 +27,7 @@ from app.document_processing.normalize import normalize_document
 from app.document_processing.service import (
     DocumentProcessingError,
     DocumentProcessingService,
+    record_processing_failure,
 )
 from app.document_processing.models import UnifiedDocument
 from app.document_processing.service import DocumentProcessingResult
@@ -356,7 +357,7 @@ class FusionAndChunkingTests(unittest.TestCase):
             ),
         )
 
-        chunks = build_document_chunks(document, "default", chunk_size=180)
+        chunks = build_document_chunks(document, "default", "user-1", chunk_size=180)
         table_chunks = [
             chunk for chunk in chunks if chunk["metadata"]["content_type"] == "table"
         ]
@@ -367,6 +368,43 @@ class FusionAndChunkingTests(unittest.TestCase):
             self.assertIn("2025", chunk["content"])
             self.assertIn("structured_data", chunk["metadata"])
             self.assertTrue(chunk["metadata"]["chunk_id"].startswith("file-3-table"))
+
+    def test_header_only_table_builds_chunk_without_body_rows(self):
+        headers = TableRow(
+            cells=[
+                TableCell(text="Metric", row_index=0, column_index=0),
+                TableCell(text="2025", row_index=0, column_index=1),
+            ]
+        )
+        document = fuse_documents(
+            4,
+            "report.pdf",
+            NormalizedDocument(processor_kind="ocr", processor_id="ocr", page_count=1),
+            NormalizedDocument(
+                processor_kind="form",
+                processor_id="form",
+                page_count=1,
+                tables=[
+                    DocumentTable(
+                        id="header-only",
+                        page_number=1,
+                        title="Header only",
+                        header_rows=[headers],
+                        body_rows=[],
+                        source_processors=["form"],
+                    )
+                ],
+            ),
+        )
+
+        chunks = build_document_chunks(document, "default", "user-1", chunk_size=180)
+        table_chunks = [
+            chunk for chunk in chunks if chunk["metadata"]["content_type"] == "table"
+        ]
+
+        self.assertEqual(len(table_chunks), 1)
+        self.assertIn("| Metric | 2025 |", table_chunks[0]["content"])
+        self.assertEqual(table_chunks[0]["metadata"]["structured_data"]["rows"], [])
 
     def test_chunk_point_id_is_stable_for_structured_chunk_id(self):
         chunk = {
@@ -379,6 +417,34 @@ class FusionAndChunkingTests(unittest.TestCase):
         }
 
         self.assertEqual(make_chunk_point_id(chunk), make_chunk_point_id(chunk))
+
+    def test_record_processing_failure_preserves_existing_specific_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_dir = Path(temp_dir)
+            manifest_path = artifact_dir / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "status": "failed",
+                        "failed_stage": "fusion",
+                        "error_code": "document_fusion_failed",
+                        "error": "NameError: name 'body_rows' is not defined",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            record_processing_failure(
+                artifact_dir,
+                "fusion",
+                "document_fusion_failed",
+                "Document fusion failed.",
+            )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                manifest["error"], "NameError: name 'body_rows' is not defined"
+            )
 
 
 class DocumentProcessingServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -411,6 +477,7 @@ class DocumentProcessingServiceTests(unittest.IsolatedAsyncioTestCase):
                 file_id=9,
                 filename="report.pdf",
                 assistant_id="default",
+                user_id="user-1",
             )
 
             self.assertEqual(len(client.calls), 4)
@@ -449,6 +516,7 @@ class DocumentProcessingServiceTests(unittest.IsolatedAsyncioTestCase):
                     file_id=10,
                     filename="report.pdf",
                     assistant_id="default",
+                    user_id="user-1",
                 )
 
             artifact_dir = Path(temp_dir) / "10"
@@ -473,6 +541,7 @@ class DocumentProcessingServiceTests(unittest.IsolatedAsyncioTestCase):
                     file_id=12,
                     filename="report.pdf",
                     assistant_id="default",
+                    user_id="user-1",
                 )
 
             self.assertEqual(result.processing_summary["status"], "ready")
@@ -495,6 +564,7 @@ class DocumentProcessingServiceTests(unittest.IsolatedAsyncioTestCase):
                     file_id=11,
                     filename="report.pdf",
                     assistant_id="default",
+                    user_id="user-1",
                 )
 
             self.assertEqual(raised.exception.status_code, 413)
@@ -506,6 +576,7 @@ class UploadIntegrationTests(unittest.IsolatedAsyncioTestCase):
         now = datetime.now()
         return {
             "id": file_id,
+            "user_id": "user-1",
             "assistant_id": "default",
             "original_name": "report.pdf",
             "saved_name": "saved_report.pdf",
@@ -586,9 +657,9 @@ class UploadIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 patch("app.uploads.delete_file_chunks") as delete_chunks,
             ):
                 with self.assertRaises(Exception):
-                    await upload_file(upload, assistant_id="default")
+                    await upload_file(upload, user={"id": "user-1"})
 
-            delete_chunks.assert_called_once_with("default", 41)
+            delete_chunks.assert_called_once_with("user-1", 41)
             self.assertEqual(updates[-1][1], "failed")
 
     async def test_non_pdf_keeps_local_parser_flow(self):
@@ -615,7 +686,7 @@ class UploadIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 patch("app.uploads.add_chunks_to_vectorstore"),
                 patch("app.uploads.get_document_processing_service") as get_service,
             ):
-                result = await upload_file(upload, assistant_id="default")
+                result = await upload_file(upload, user={"id": "user-1"})
 
             get_service.assert_not_called()
             self.assertEqual(result["file"]["status"], "ready")

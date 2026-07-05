@@ -8,6 +8,7 @@ from .graph_react import create_react_graph
 from .graph_plan_solve import create_plan_solve_graph
 from .mcp import McpToolProvider
 from .config import get_settings
+from .tools.tool import make_rag_search_tool
 
 
 @dataclass
@@ -21,7 +22,10 @@ async def build_app_services() -> AppServices:
     mcp_provider = McpToolProvider(settings)
     await mcp_provider.initialize()
 
-    tools = mcp_provider.get_tool_callables()
+    tools = [
+        make_rag_search_tool() if tool.name == "rag_search" else tool
+        for tool in mcp_provider.get_tool_callables()
+    ]
     chat_strategy = ChatStrategy(
         chat_graph=chat_graph,
         react_graph=create_react_graph(tools),

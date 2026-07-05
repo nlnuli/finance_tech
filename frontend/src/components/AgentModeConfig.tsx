@@ -27,7 +27,7 @@ const MODE_OPTIONS: Array<{
 export function AgentModeConfig({ mode, onSave, disabled }: AgentModeConfigProps) {
   return (
     <div className="agent-mode-config">
-      <div className="agent-mode-options">
+      <div className="agent-mode-options" role="radiogroup" aria-label="Agent mode">
         {MODE_OPTIONS.map((option) => (
           <label
             className={mode === option.value ? "active" : ""}

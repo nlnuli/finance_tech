@@ -3,6 +3,8 @@ import operator
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from langchain_core.tools import StructuredTool
+
 from ..config import get_settings
 from ..vectorstore import similarity_search
 
@@ -53,12 +55,23 @@ def rag_search(query: str) -> str:
         settings = get_settings()
         results = similarity_search(
             query=query,
-            assistant_id="default",
             k=settings.rag_final_count,
         )
         return format_search_results(results)
     except Exception:
         return "rag_search error: failed to search uploaded documents."
+
+
+def make_rag_search_tool() -> StructuredTool:
+    return StructuredTool.from_function(
+        func=rag_search,
+        name="rag_search",
+        description=(
+            "Search uploaded financial documents in the current user's isolated "
+            "RAG knowledge base. Use it for questions about filings, earnings "
+            "releases, reports, uploaded files, or document-backed analysis."
+        ),
+    )
 
 
 def evaluate_math_node(node: ast.AST) -> float:

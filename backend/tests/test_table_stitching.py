@@ -539,6 +539,7 @@ class LogicalTableChunkingTests(unittest.TestCase):
         chunks = build_document_chunks(
             document,
             "default",
+            "user-1",
             chunk_size=180,
             logical_tables=stitching.logical_tables,
         )
@@ -577,6 +578,7 @@ class LogicalTableChunkingTests(unittest.TestCase):
         chunks = build_document_chunks(
             document,
             "default",
+            "user-1",
             logical_tables=stitching.logical_tables,
         )
 

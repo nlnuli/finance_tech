@@ -1,3 +1,5 @@
+import { ChatCircle, Plus } from "@phosphor-icons/react";
+
 import { Thread } from "../api";
 
 type ThreadListProps = {
@@ -18,10 +20,14 @@ export function ThreadList({
   return (
     <aside className="thread-list">
       <button className="new-thread-button" type="button" onClick={onNewThread}>
-        新对话
+        <Plus size={17} weight="bold" aria-hidden="true" />
+        <span>新对话</span>
       </button>
 
-      <div className="thread-list-title">历史对话</div>
+      <div className="thread-list-title">
+        <span>历史对话</span>
+        <strong>{threads.length}</strong>
+      </div>
 
       {isLoading ? <p className="thread-list-empty">加载中...</p> : null}
 
@@ -37,9 +43,11 @@ export function ThreadList({
             }`}
             key={thread.id}
             type="button"
+            aria-current={thread.id === activeThreadId ? "true" : undefined}
             onClick={() => onSelectThread(thread.id)}
           >
-            {thread.title || "未命名对话"}
+            <ChatCircle size={16} aria-hidden="true" />
+            <span>{thread.title || "未命名对话"}</span>
           </button>
         ))}
       </div>

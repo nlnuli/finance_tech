@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import Optional
 from uuid import uuid4
 
+from ..security import hash_password, normalize_email
 from .db import get_connection, init_database
 
 
@@ -10,7 +11,67 @@ def prepare_database() -> None:
     init_database()
 
 
-def create_thread(title: Optional[str] = None, thread_id: Optional[str] = None) -> dict:
+def create_user(email: str, password: str, display_name: Optional[str] = None) -> dict:
+    prepare_database()
+    user_id = str(uuid4())
+    normalized_email = normalize_email(email)
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO users (id, email, display_name, password_hash)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (user_id, normalized_email, display_name, hash_password(password)),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+    return get_user(user_id)
+
+
+def get_user(user_id: str) -> Optional[dict]:
+    prepare_database()
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, email, display_name, password_hash, created_at, updated_at
+                FROM users
+                WHERE id = %s
+                """,
+                (user_id,),
+            )
+            return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def get_user_by_email(email: str) -> Optional[dict]:
+    prepare_database()
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, email, display_name, password_hash, created_at, updated_at
+                FROM users
+                WHERE email = %s
+                """,
+                (normalize_email(email),),
+            )
+            return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def create_thread(
+    user_id: str,
+    title: Optional[str] = None,
+    thread_id: Optional[str] = None,
+) -> dict:
     prepare_database()
 
     new_thread_id = thread_id or str(uuid4())
@@ -18,50 +79,60 @@ def create_thread(title: Optional[str] = None, thread_id: Optional[str] = None) 
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO threads (id, title) VALUES (%s, %s)",
-                (new_thread_id, title),
+                "INSERT INTO threads (id, user_id, title) VALUES (%s, %s, %s)",
+                (new_thread_id, user_id, title),
             )
         connection.commit()
     finally:
         connection.close()
 
-    return get_thread(new_thread_id)
+    return get_thread(user_id, new_thread_id)
 
 
-def ensure_thread(thread_id: str, title: Optional[str] = None) -> dict:
-    thread = get_thread(thread_id)
+def ensure_thread(user_id: str, thread_id: str, title: Optional[str] = None) -> dict:
+    thread = get_thread(user_id, thread_id)
     if thread:
         return thread
-    return create_thread(title=title, thread_id=thread_id)
+    return create_thread(user_id, title=title, thread_id=thread_id)
 
 
-def get_thread(thread_id: str) -> Optional[dict]:
+def get_thread(user_id: str, thread_id: str) -> Optional[dict]:
     prepare_database()
 
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM threads WHERE id = %s", (thread_id,))
+            cursor.execute(
+                "SELECT * FROM threads WHERE id = %s AND user_id = %s",
+                (thread_id, user_id),
+            )
             return cursor.fetchone()
     finally:
         connection.close()
 
 
-def list_threads() -> list[dict]:
+def list_threads(user_id: str) -> list[dict]:
     prepare_database()
 
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM threads ORDER BY updated_at DESC")
+            cursor.execute(
+                """
+                SELECT * FROM threads
+                WHERE user_id = %s
+                ORDER BY updated_at DESC
+                """,
+                (user_id,),
+            )
             return cursor.fetchall()
     finally:
         connection.close()
 
 
-def save_message(thread_id: str, role: str, content: str) -> dict:
+def save_message(user_id: str, thread_id: str, role: str, content: str) -> dict:
     prepare_database()
-    ensure_thread(thread_id)
+    ensure_thread(user_id, thread_id)
 
     connection = get_connection()
     try:
@@ -75,29 +146,21 @@ def save_message(thread_id: str, role: str, content: str) -> dict:
             )
             message_id = cursor.lastrowid
             cursor.execute(
-                "UPDATE threads SET updated_at = CURRENT_TIMESTAMP WHERE id = %s",
-                (thread_id,),
+                """
+                UPDATE threads
+                SET updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                """,
+                (thread_id, user_id),
             )
         connection.commit()
     finally:
         connection.close()
 
-    return get_message(message_id)
+    return get_message(user_id, message_id)
 
 
-def get_message(message_id: int) -> Optional[dict]:
-    prepare_database()
-
-    connection = get_connection()
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM messages WHERE id = %s", (message_id,))
-            return cursor.fetchone()
-    finally:
-        connection.close()
-
-
-def list_messages(thread_id: str) -> list[dict]:
+def get_message(user_id: str, message_id: int) -> Optional[dict]:
     prepare_database()
 
     connection = get_connection()
@@ -105,38 +168,78 @@ def list_messages(thread_id: str) -> list[dict]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT * FROM messages
-                WHERE thread_id = %s
-                ORDER BY created_at ASC, id ASC
+                SELECT messages.*
+                FROM messages
+                JOIN threads ON threads.id = messages.thread_id
+                WHERE messages.id = %s AND threads.user_id = %s
                 """,
-                (thread_id,),
+                (message_id, user_id),
+            )
+            return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def list_messages(user_id: str, thread_id: str) -> list[dict]:
+    prepare_database()
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT messages.*
+                FROM messages
+                JOIN threads ON threads.id = messages.thread_id
+                WHERE messages.thread_id = %s AND threads.user_id = %s
+                ORDER BY messages.created_at ASC, messages.id ASC
+                """,
+                (thread_id, user_id),
             )
             return cursor.fetchall()
     finally:
         connection.close()
 
 
-def list_messages_after(message_id: int, limit: int = 200) -> list[dict]:
+def list_messages_after(
+    message_id: int,
+    limit: int = 200,
+    user_id: str | None = None,
+) -> list[dict]:
     prepare_database()
 
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT * FROM messages
-                WHERE id > %s
-                ORDER BY id ASC
-                LIMIT %s
-                """,
-                (message_id, limit),
-            )
+            if user_id:
+                cursor.execute(
+                    """
+                    SELECT messages.*
+                    FROM messages
+                    JOIN threads ON threads.id = messages.thread_id
+                    WHERE messages.id > %s AND threads.user_id = %s
+                    ORDER BY messages.id ASC
+                    LIMIT %s
+                    """,
+                    (message_id, user_id, limit),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT * FROM messages
+                    WHERE id > %s
+                    ORDER BY id ASC
+                    LIMIT %s
+                    """,
+                    (message_id, limit),
+                )
             return cursor.fetchall()
     finally:
         connection.close()
 
 
 def save_file_record(
+    user_id: str,
     assistant_id: str,
     original_name: str,
     saved_name: str,
@@ -154,6 +257,7 @@ def save_file_record(
                 """
                 INSERT INTO files (
                     assistant_id,
+                    user_id,
                     original_name,
                     saved_name,
                     file_path,
@@ -161,10 +265,11 @@ def save_file_record(
                     size_bytes,
                     status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     assistant_id,
+                    user_id,
                     original_name,
                     saved_name,
                     file_path,
@@ -178,7 +283,7 @@ def save_file_record(
     finally:
         connection.close()
 
-    return get_file_record(file_id)
+    return get_file_record(file_id, user_id=user_id)
 
 
 def update_file_processing(
@@ -218,19 +323,26 @@ def update_file_processing(
     return get_file_record(file_id)
 
 
-def get_file_record(file_id: int) -> Optional[dict]:
+def get_file_record(file_id: int, user_id: str | None = None) -> Optional[dict]:
     prepare_database()
 
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM files WHERE id = %s", (file_id,))
+            if user_id:
+                cursor.execute(
+                    "SELECT * FROM files WHERE id = %s AND user_id = %s",
+                    (file_id, user_id),
+                )
+            else:
+                cursor.execute("SELECT * FROM files WHERE id = %s", (file_id,))
             return cursor.fetchone()
     finally:
         connection.close()
 
 
 def list_file_records(
+    user_id: str | None = None,
     assistant_id: str | None = None,
     statuses: tuple[str, ...] = ("ready",),
     after_file_id: int | None = None,
@@ -239,6 +351,9 @@ def list_file_records(
     conditions = []
     parameters: list[object] = []
 
+    if user_id:
+        conditions.append("user_id = %s")
+        parameters.append(user_id)
     if assistant_id:
         conditions.append("assistant_id = %s")
         parameters.append(assistant_id)

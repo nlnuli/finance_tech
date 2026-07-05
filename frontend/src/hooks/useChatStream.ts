@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import { API_BASE_URL } from "../api";
+import { API_BASE_URL, getAuthToken } from "../api";
 
 type StreamEvent = {
   event: string;
@@ -74,6 +74,9 @@ export function useChatStream() {
       const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
         method: "POST",
         headers: {
+          ...(getAuthToken()
+            ? { Authorization: `Bearer ${getAuthToken()}` }
+            : {}),
           "Content-Type": "application/json",
         },
         signal: abortController.signal,

@@ -44,6 +44,12 @@ REACT_PROMPT = """
 - 如果答案依赖工具结果，要明确说明“根据查询结果”。
 """
 
+FORCE_RAG_PROMPT = """
+本轮问题需要优先查询用户上传的 RAG 知识库。
+在回答前必须先调用 rag_search，并基于检索结果作答。
+如果 rag_search 没有返回相关内容，请明确说明知识库中没有找到足够依据。
+"""
+
 
 class ChatStrategy:
     def __init__(self, chat_graph, react_graph, plan_solve_graph):
@@ -56,10 +62,13 @@ class ChatStrategy:
         message: str,
         mode: str = "react",
         memory_brief: str = "",
+        force_rag: bool = False,
     ):
         messages = []
         if memory_brief:
             messages.append(SystemMessage(content=memory_brief))
+        if force_rag:
+            messages.append(SystemMessage(content=FORCE_RAG_PROMPT))
         messages.append(HumanMessage(content=message))
 
         if mode == "chat":

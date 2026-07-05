@@ -31,6 +31,7 @@ class HybridReindexTests(unittest.TestCase):
             )
             record = {
                 "id": 41,
+                "user_id": "user-1",
                 "assistant_id": "default",
                 "original_name": "report.pdf",
                 "file_path": str(artifact_dir / "missing-source.pdf"),
@@ -85,6 +86,7 @@ class HybridReindexTests(unittest.TestCase):
             )
             record = {
                 "id": 43,
+                "user_id": "user-1",
                 "assistant_id": "default",
                 "original_name": "report.pdf",
                 "file_path": str(artifact_dir / "missing.pdf"),
@@ -111,6 +113,7 @@ class HybridReindexTests(unittest.TestCase):
     def test_reindex_replaces_points_verifies_count_and_recovers_status(self):
         record = {
             "id": 41,
+            "user_id": "user-1",
             "assistant_id": "default",
             "original_name": "report.pdf",
             "artifact_dir": "/tmp/artifacts/41",
@@ -121,6 +124,7 @@ class HybridReindexTests(unittest.TestCase):
                 "content": "financial text",
                 "metadata": {
                     "assistant_id": "default",
+                    "user_id": "user-1",
                     "file_id": 41,
                     "chunk_index": 0,
                 },
@@ -146,7 +150,7 @@ class HybridReindexTests(unittest.TestCase):
 
         self.assertEqual(count, 1)
         load_chunks.assert_called_once_with(record, persist_stitching=True)
-        delete_chunks.assert_called_once_with("default", 41, "hybrid-v1")
+        delete_chunks.assert_called_once_with("user-1", 41, "hybrid-v1")
         add_chunks.assert_called_once_with(chunks, "hybrid-v1")
         mark_recovered.assert_called_once_with(record)
         update_file.assert_called_once_with(

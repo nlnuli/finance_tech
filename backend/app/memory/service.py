@@ -742,7 +742,7 @@ class MemoryStore:
         self.initialize_user(user_id)
         state = self.read_state(user_id)
         last_processed_id = int(state.get("last_processed_message_id") or 0)
-        messages = storage.list_messages_after(last_processed_id)
+        messages = storage.list_messages_after(last_processed_id, user_id=user_id)
         if len(messages) < self.trigger_message_count:
             return {
                 "enabled": True,

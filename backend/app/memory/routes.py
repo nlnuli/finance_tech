@@ -1,7 +1,6 @@
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
 
-from fastapi import APIRouter, HTTPException, Query
-
+from ..auth import current_user
 from .service import get_memory_store
 
 
@@ -10,28 +9,28 @@ router = APIRouter(prefix="/api/memory", tags=["memory"])
 
 @router.get("")
 def get_memory_index(
-    user_id: Optional[str] = Query(default=None),
+    user: dict = Depends(current_user),
 ) -> dict:
-    return get_memory_store().get_index_response(user_id)
+    return get_memory_store().get_index_response(user["id"])
 
 
 @router.get("/topic/{topic_name}")
 def get_memory_topic(
     topic_name: str,
-    user_id: Optional[str] = Query(default=None),
+    user: dict = Depends(current_user),
 ) -> dict:
     try:
-        return get_memory_store().get_topic_response(topic_name, user_id)
+        return get_memory_store().get_topic_response(topic_name, user["id"])
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/compact")
 def compact_memory(
-    user_id: Optional[str] = Query(default=None),
+    user: dict = Depends(current_user),
 ) -> dict:
-    result = get_memory_store().compact(user_id)
+    result = get_memory_store().compact(user["id"])
     return {
-        "user_id": get_memory_store().user_id(user_id),
+        "user_id": get_memory_store().user_id(user["id"]),
         "result": result,
     }

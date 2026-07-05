@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { ChartLineUp } from "@phosphor-icons/react";
 
 import { ApiMessage, getHealth } from "../api";
 import { useChatStream } from "../hooks/useChatStream";
@@ -207,9 +208,12 @@ export function ChatPage() {
 
         <section className="chat-shell">
           <header className="chat-header">
-            <div>
+            <div className="chat-heading">
               <h1>Personal QA Assistant</h1>
-              <p>Backend health: {health}</p>
+              <p className={`health-status ${health}`}>
+                <span aria-hidden="true" />
+                Backend {health}
+              </p>
             </div>
             <div className="chat-header-actions">
               <AgentModeConfig
@@ -224,7 +228,11 @@ export function ChatPage() {
           {isLoadingMessages ? (
             <div className="empty-chat">加载历史消息中...</div>
           ) : messages.length === 0 ? (
-            <div className="empty-chat">开始一个新问题，或从左侧选择历史对话。</div>
+            <div className="empty-chat">
+              <ChartLineUp size={28} weight="duotone" aria-hidden="true" />
+              <h2>准备好开始新的研究</h2>
+              <p>当前会话还没有消息。</p>
+            </div>
           ) : (
             <div className="conversation">
               <PlanView steps={planSteps} />

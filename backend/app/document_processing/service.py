@@ -94,6 +94,13 @@ def record_processing_failure(
             manifest = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             manifest = {}
+    existing_error = manifest.get("error")
+    if (
+        manifest.get("failed_stage") == stage
+        and manifest.get("error_code") == error_code
+        and existing_error
+    ):
+        message = str(existing_error)
     manifest.update(
         {
             "status": "failed",
@@ -215,6 +222,7 @@ class DocumentProcessingService:
         file_id: int,
         filename: str,
         assistant_id: str,
+        user_id: str,
     ) -> DocumentProcessingResult:
         artifact_dir = Path(self.settings.document_ai_artifact_dir) / str(file_id)
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -346,6 +354,7 @@ class DocumentProcessingService:
             chunks = build_document_chunks(
                 unified,
                 assistant_id,
+                user_id,
                 logical_tables=table_stitching.logical_tables,
             )
         except Exception as exc:

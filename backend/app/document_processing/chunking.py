@@ -10,6 +10,7 @@ from .models import DocumentTable, FormField, LogicalTable, TableRow, UnifiedDoc
 def _base_metadata(
     filename: str,
     assistant_id: str,
+    user_id: str,
     file_id: int,
     content_type: str,
     page_start: int,
@@ -18,6 +19,7 @@ def _base_metadata(
     return {
         "filename": filename,
         "assistant_id": assistant_id,
+        "user_id": user_id,
         "file_id": file_id,
         "content_type": content_type,
         "page_start": page_start,
@@ -97,6 +99,7 @@ def _render_table_markdown(
 def _text_chunks(
     document: UnifiedDocument,
     assistant_id: str,
+    user_id: str,
     chunk_size: int,
     chunk_overlap: int,
 ) -> list[dict]:
@@ -118,6 +121,7 @@ def _text_chunks(
             metadata = _base_metadata(
                 document.filename,
                 assistant_id,
+                user_id,
                 document.file_id,
                 "text",
                 page_number,
@@ -144,6 +148,7 @@ def _text_chunks(
 def _table_chunks(
     document: UnifiedDocument,
     assistant_id: str,
+    user_id: str,
     chunk_size: int,
     logical_tables: list[LogicalTable] | None = None,
 ) -> list[dict]:
@@ -170,7 +175,7 @@ def _table_chunks(
                 current_start = row_index
             else:
                 current_rows = candidate
-        if current_rows or not body_rows:
+        if current_rows or not table.body_rows:
             row_groups.append((current_start, current_rows))
 
         for part_index, (row_start, rows) in enumerate(row_groups):
@@ -184,6 +189,7 @@ def _table_chunks(
             metadata = _base_metadata(
                 document.filename,
                 assistant_id,
+                user_id,
                 document.file_id,
                 "table",
                 page_start,
@@ -223,6 +229,7 @@ def _table_chunks(
 def _form_field_chunks(
     document: UnifiedDocument,
     assistant_id: str,
+    user_id: str,
     chunk_size: int,
 ) -> list[dict]:
     fields_by_page: dict[int, list[FormField]] = defaultdict(list)
@@ -253,6 +260,7 @@ def _form_field_chunks(
             metadata = _base_metadata(
                 document.filename,
                 assistant_id,
+                user_id,
                 document.file_id,
                 "form_field",
                 page_number,
@@ -287,14 +295,15 @@ def _form_field_chunks(
 def build_document_chunks(
     document: UnifiedDocument,
     assistant_id: str,
+    user_id: str,
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     logical_tables: list[LogicalTable] | None = None,
 ) -> list[dict]:
     chunks = [
-        *_text_chunks(document, assistant_id, chunk_size, chunk_overlap),
-        *_table_chunks(document, assistant_id, chunk_size, logical_tables),
-        *_form_field_chunks(document, assistant_id, chunk_size),
+        *_text_chunks(document, assistant_id, user_id, chunk_size, chunk_overlap),
+        *_table_chunks(document, assistant_id, user_id, chunk_size, logical_tables),
+        *_form_field_chunks(document, assistant_id, user_id, chunk_size),
     ]
     for chunk_index, chunk in enumerate(chunks):
         metadata = chunk["metadata"]

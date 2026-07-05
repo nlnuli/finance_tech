@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from langchain_core.messages import BaseMessage
 
+from .auth import current_user
 from .model import storage
 from .runtime import get_app_services
 from .schemas import CreateThreadRequest, MessageResponse, ThreadResponse
@@ -40,32 +41,39 @@ def serialize_state(state) -> dict:
     }
 
 
-def ensure_thread_exists(thread_id: str) -> None:
-    thread = storage.get_thread(thread_id)
+def ensure_thread_exists(user_id: str, thread_id: str) -> None:
+    thread = storage.get_thread(user_id, thread_id)
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
 
 
 @router.post("", response_model=ThreadResponse)
-def create_thread(request: CreateThreadRequest) -> dict:
-    return storage.create_thread(title=request.title)
+def create_thread(request: CreateThreadRequest, user: dict = Depends(current_user)) -> dict:
+    return storage.create_thread(user["id"], title=request.title)
 
 
 @router.get("", response_model=list[ThreadResponse])
-def list_threads() -> list[dict]:
-    return storage.list_threads()
+def list_threads(user: dict = Depends(current_user)) -> list[dict]:
+    return storage.list_threads(user["id"])
 
 
 @router.get("/{thread_id}/messages", response_model=list[MessageResponse])
-def list_thread_messages(thread_id: str) -> list[dict]:
-    ensure_thread_exists(thread_id)
+def list_thread_messages(
+    thread_id: str,
+    user: dict = Depends(current_user),
+) -> list[dict]:
+    ensure_thread_exists(user["id"], thread_id)
 
-    return storage.list_messages(thread_id)
+    return storage.list_messages(user["id"], thread_id)
 
 
 @router.get("/{thread_id}/state")
-async def get_thread_state(request: Request, thread_id: str) -> dict:
-    ensure_thread_exists(thread_id)
+async def get_thread_state(
+    request: Request,
+    thread_id: str,
+    user: dict = Depends(current_user),
+) -> dict:
+    ensure_thread_exists(user["id"], thread_id)
 
     plan_solve_graph = get_app_services(request.app).chat_strategy.plan_solve_graph
     state = await plan_solve_graph.aget_state(get_graph_config(thread_id))
@@ -73,8 +81,12 @@ async def get_thread_state(request: Request, thread_id: str) -> dict:
 
 
 @router.get("/{thread_id}/history")
-async def get_thread_history(request: Request, thread_id: str) -> list[dict]:
-    ensure_thread_exists(thread_id)
+async def get_thread_history(
+    request: Request,
+    thread_id: str,
+    user: dict = Depends(current_user),
+) -> list[dict]:
+    ensure_thread_exists(user["id"], thread_id)
 
     plan_solve_graph = get_app_services(request.app).chat_strategy.plan_solve_graph
     history = []

@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .auth import router as auth_router
 from .config import get_settings
 from .memory.routes import router as memory_router
 from .runtime import build_app_services
@@ -36,6 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(thread_router)
 app.include_router(upload_router)

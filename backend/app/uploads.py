@@ -3,8 +3,9 @@ from pathlib import Path
 import time
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from .auth import current_user
 from .config import get_settings
 from .document_processing import (
     DocumentProcessingError,
@@ -26,7 +27,7 @@ DEFAULT_ASSISTANT_ID = "default"
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
-    assistant_id: str = Form(DEFAULT_ASSISTANT_ID),
+    user: dict = Depends(current_user),
 ) -> dict:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -36,7 +37,9 @@ async def upload_file(
 
     content = await file.read()
     file_path.write_bytes(content)
+    assistant_id = DEFAULT_ASSISTANT_ID
     file_record = save_file_record(
+        user_id=user["id"],
         assistant_id=assistant_id,
         original_name=original_name,
         saved_name=saved_name,
@@ -52,7 +55,7 @@ async def upload_file(
     async def mark_failed(stage: str, error_code: str, message: str) -> None:
         if indexing_started:
             try:
-                await asyncio.to_thread(delete_file_chunks, assistant_id, file_id)
+                await asyncio.to_thread(delete_file_chunks, user["id"], file_id)
             except Exception:
                 pass
         try:
@@ -88,6 +91,7 @@ async def upload_file(
                 file_id=file_id,
                 filename=original_name,
                 assistant_id=assistant_id,
+                user_id=user["id"],
             )
             chunks = processing_result.chunks
             processing_summary = processing_result.processing_summary
@@ -101,6 +105,7 @@ async def upload_file(
                 filename=original_name,
                 assistant_id=assistant_id,
                 file_id=file_id,
+                user_id=user["id"],
             )
             page_count = 1 if text else 0
             processing_summary = {

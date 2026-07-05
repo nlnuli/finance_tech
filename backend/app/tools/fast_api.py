@@ -1,7 +1,8 @@
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
+from ..auth import current_user
 from ..runtime import get_app_services
 
 
@@ -12,6 +13,7 @@ router = APIRouter(prefix="/api/tools", tags=["tools"])
 async def list_tools(
     request: Request,
     enabled: Optional[str] = Query(default=None),
+    user: dict = Depends(current_user),
 ) -> list[dict]:
     enabled_names = None
     if enabled:

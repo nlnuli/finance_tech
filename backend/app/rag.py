@@ -10,6 +10,7 @@ def split_text_into_chunks(
     filename: str,
     assistant_id: str,
     file_id: int,
+    user_id: str,
 ) -> list[dict]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
@@ -25,6 +26,7 @@ def split_text_into_chunks(
                 "metadata": {
                     "filename": filename,
                     "assistant_id": assistant_id,
+                    "user_id": user_id,
                     "file_id": file_id,
                     "chunk_index": index,
                 },

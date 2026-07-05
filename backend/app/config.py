@@ -21,6 +21,8 @@ class Settings(BaseSettings):
             "http://localhost:5173",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
         ],
         alias="CORS_ORIGINS",
     )
@@ -174,6 +176,20 @@ class Settings(BaseSettings):
     memory_index_max_bytes: int = Field(
         default=25600,
         alias="MEMORY_INDEX_MAX_BYTES",
+    )
+    jwt_secret_key: Optional[str] = Field(default=None, alias="JWT_SECRET_KEY")
+    jwt_expire_minutes: int = Field(
+        default=10080,
+        ge=1,
+        alias="JWT_EXPIRE_MINUTES",
+    )
+    default_user_email: str = Field(
+        default="default@example.local",
+        alias="DEFAULT_USER_EMAIL",
+    )
+    default_user_password: Optional[str] = Field(
+        default=None,
+        alias="DEFAULT_USER_PASSWORD",
     )
 
     model_config = SettingsConfigDict(

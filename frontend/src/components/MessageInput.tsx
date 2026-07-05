@@ -1,4 +1,5 @@
-import { FormEvent } from "react";
+import { FormEvent, useRef } from "react";
+import { Database, PaperPlaneTilt, Stop } from "@phosphor-icons/react";
 
 import { StreamStatus } from "../hooks/useChatStream";
 
@@ -42,6 +43,7 @@ export function MessageInput({
   onStop,
 }: MessageInputProps) {
   const statusText = getStatusText(status, errorMessage);
+  const isComposingRef = useRef(false);
 
   return (
     <form className="composer" onSubmit={onSubmit}>
@@ -50,10 +52,19 @@ export function MessageInput({
           aria-label="Message"
           value={draft}
           onChange={(event) => onChangeDraft(event.target.value)}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            isComposingRef.current = false;
+          }}
           placeholder="给 Personal QA 发送消息"
           disabled={isLoading}
           rows={1}
           onKeyDown={(event) => {
+            if (isComposingRef.current || event.nativeEvent.isComposing) {
+              return;
+            }
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               event.currentTarget.form?.requestSubmit();
@@ -68,15 +79,29 @@ export function MessageInput({
               onChange={(event) => onChangeRagEnabled(event.target.checked)}
               disabled={isLoading}
             />
+            <span className="toggle-track" aria-hidden="true" />
+            <Database size={15} weight="bold" aria-hidden="true" />
             <span>RAG</span>
           </label>
           {isLoading ? (
-            <button type="button" className="stop-button" onClick={onStop}>
-              停止
+            <button
+              type="button"
+              className="composer-submit stop-button"
+              aria-label="停止生成"
+              title="停止生成"
+              onClick={onStop}
+            >
+              <Stop size={17} weight="fill" aria-hidden="true" />
             </button>
           ) : (
-            <button type="submit" disabled={!draft.trim()}>
-              发送
+            <button
+              type="submit"
+              className="composer-submit"
+              aria-label="发送消息"
+              title="发送消息"
+              disabled={!draft.trim()}
+            >
+              <PaperPlaneTilt size={18} weight="fill" aria-hidden="true" />
             </button>
           )}
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CaretDown, PlugsConnected, Wrench } from "@phosphor-icons/react";
 
 import { getTools, ToolInfo } from "../api";
 
@@ -64,41 +65,62 @@ export function ToolsPage() {
     <main className="page">
       <section className="tools-page">
         <header className="tools-header">
-          <h1>Tools</h1>
-          <p>当前后端可用工具</p>
+          <div>
+            <span className="tools-heading-icon" aria-hidden="true">
+              <Wrench size={19} weight="bold" />
+            </span>
+            <div>
+              <h1>Tools</h1>
+              <p>当前后端可用工具</p>
+            </div>
+          </div>
+          <span className="tool-count">
+            <PlugsConnected size={15} weight="bold" aria-hidden="true" />
+            {tools.length} connected
+          </span>
         </header>
 
         {status ? <div className="empty-chat">{status}</div> : null}
 
         <div className="tool-list">
-          {tools.map((item) => (
-            <article className="tool-card" key={item.name}>
-              <div className="tool-card-header">
-                <div>
-                  <h2>{item.name}</h2>
-                  <span>{formatSource(item)}</span>
+          {tools.map((item) => {
+            const params = getParameterEntries(item.args_schema);
+            return (
+              <article className="tool-card" key={item.name}>
+                <div className="tool-card-header">
+                  <div>
+                    <h2>{item.name}</h2>
+                    <span>{formatSource(item)}</span>
+                  </div>
+                  <span className="tool-source">{item.transport}</span>
                 </div>
-              </div>
-              <p className="tool-description">{item.description || "暂无工具说明"}</p>
-              <div className="tool-params">
-                <h3>参数说明</h3>
-                {getParameterEntries(item.args_schema).length === 0 ? (
-                  <p>无需参数。</p>
-                ) : (
-                  <ul>
-                    {getParameterEntries(item.args_schema).map((param) => (
-                      <li key={param.name}>
-                        <strong>{param.name}</strong>
-                        <span>{param.required ? "必填" : "可选"}</span>
-                        <em>{param.type}</em>
-                        <p>{param.description}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </article>
-          ))}
+                <p className="tool-description">
+                  {item.description || "暂无工具说明"}
+                </p>
+                <details className="tool-params">
+                  <summary>
+                    <span>参数说明</span>
+                    <strong>{params.length}</strong>
+                    <CaretDown size={14} weight="bold" aria-hidden="true" />
+                  </summary>
+                  {params.length === 0 ? (
+                    <p>无需参数。</p>
+                  ) : (
+                    <ul>
+                      {params.map((param) => (
+                        <li key={param.name}>
+                          <strong>{param.name}</strong>
+                          <span>{param.required ? "必填" : "可选"}</span>
+                          <em>{param.type}</em>
+                          <p>{param.description}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </details>
+              </article>
+            );
+          })}
         </div>
       </section>
     </main>

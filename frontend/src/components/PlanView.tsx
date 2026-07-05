@@ -21,9 +21,16 @@ export function PlanView({ steps }: PlanViewProps) {
         {steps.map((step, index) => (
           <li className={`plan-step ${step.status}`} key={step.id}>
             <div>
-              <span>{index + 1}</span>
+              <span className="plan-step-index">{index + 1}</span>
               <strong>{step.text}</strong>
               <em>
+                {step.status === "running" ? (
+                  <CircleNotch className="spin" size={14} weight="bold" aria-hidden="true" />
+                ) : step.status === "done" ? (
+                  <CheckCircle size={14} weight="fill" aria-hidden="true" />
+                ) : (
+                  <Circle size={14} aria-hidden="true" />
+                )}
                 {step.status === "running"
                   ? "执行中"
                   : step.status === "done"
@@ -38,3 +45,4 @@ export function PlanView({ steps }: PlanViewProps) {
     </section>
   );
 }
+import { CheckCircle, Circle, CircleNotch } from "@phosphor-icons/react";

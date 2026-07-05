@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from functools import lru_cache
 from typing import Iterator, Sequence
@@ -14,8 +15,19 @@ logger = logging.getLogger(__name__)
 
 EMBEDDING_SIZE = 1536
 ASSISTANT_ID_PAYLOAD_KEY = "metadata.assistant_id"
+USER_ID_PAYLOAD_KEY = "metadata.user_id"
 FILE_ID_PAYLOAD_KEY = "metadata.file_id"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+TICKER_ALIASES = {
+    "AAPL": ("aapl", "apple", "苹果"),
+    "AMZN": ("amzn", "amazon", "亚马逊"),
+    "NVDA": ("nvda", "nvidia", "英伟达"),
+    "MSFT": ("msft", "microsoft", "微软"),
+    "GOOGL": ("googl", "google", "alphabet", "谷歌"),
+    "GOOG": ("goog", "google", "alphabet", "谷歌"),
+    "META": ("meta", "facebook", "脸书"),
+    "TSLA": ("tsla", "tesla", "特斯拉"),
+}
 
 
 def get_embedding_api_key() -> str | None:
@@ -128,6 +140,7 @@ def ensure_collection_exists(collection_name: str | None = None) -> None:
     _validate_collection_schema(collection_info)
     payload_schema = collection_info.payload_schema or {}
     required_indexes = {
+        USER_ID_PAYLOAD_KEY: models.PayloadSchemaType.KEYWORD,
         ASSISTANT_ID_PAYLOAD_KEY: models.PayloadSchemaType.KEYWORD,
         FILE_ID_PAYLOAD_KEY: models.PayloadSchemaType.INTEGER,
     }
@@ -159,6 +172,33 @@ def make_bm25_document(text: str) -> models.Document:
             "tokenizer": settings.qdrant_bm25_tokenizer,
         },
     )
+
+
+def _query_entity_terms(query: str) -> set[str]:
+    lowered = query.lower()
+    terms: set[str] = set()
+    explicit_tickers = {
+        match.upper()
+        for match in re.findall(r"(?<![A-Za-z])([A-Z]{2,5})(?![A-Za-z])", query)
+    }
+    for ticker, aliases in TICKER_ALIASES.items():
+        if ticker in explicit_tickers or any(alias in lowered for alias in aliases):
+            terms.update(aliases)
+            terms.add(ticker.lower())
+    for ticker in explicit_tickers:
+        terms.add(ticker.lower())
+    return terms
+
+
+def _matches_entity_terms(item: dict, terms: set[str]) -> bool:
+    metadata = item.get("metadata") or {}
+    haystack = " ".join(
+        [
+            str(item.get("content") or ""),
+            *(str(value) for value in metadata.values()),
+        ]
+    ).lower()
+    return any(term in haystack for term in terms)
 
 
 def _batches(items: Sequence[dict], size: int) -> Iterator[Sequence[dict]]:
@@ -207,13 +247,9 @@ def add_chunks_to_vectorstore(
         client.upsert(collection_name=target, points=points, wait=True)
 
 
-def _file_filter(assistant_id: str, file_id: int) -> models.Filter:
+def _file_filter(file_id: int) -> models.Filter:
     return models.Filter(
         must=[
-            models.FieldCondition(
-                key=ASSISTANT_ID_PAYLOAD_KEY,
-                match=models.MatchValue(value=assistant_id),
-            ),
             models.FieldCondition(
                 key=FILE_ID_PAYLOAD_KEY,
                 match=models.MatchValue(value=file_id),
@@ -223,27 +259,27 @@ def _file_filter(assistant_id: str, file_id: int) -> models.Filter:
 
 
 def delete_file_chunks(
-    assistant_id: str,
+    user_id: str,
     file_id: int,
     collection_name: str | None = None,
 ) -> None:
     get_qdrant_client().delete(
         collection_name=_collection_name(collection_name),
         points_selector=models.FilterSelector(
-            filter=_file_filter(assistant_id, file_id)
+            filter=_file_filter(file_id)
         ),
         wait=True,
     )
 
 
 def count_file_chunks(
-    assistant_id: str,
+    user_id: str,
     file_id: int,
     collection_name: str | None = None,
 ) -> int:
     result = get_qdrant_client().count(
         collection_name=_collection_name(collection_name),
-        count_filter=_file_filter(assistant_id, file_id),
+        count_filter=_file_filter(file_id),
         exact=True,
     )
     return result.count
@@ -251,20 +287,11 @@ def count_file_chunks(
 
 def similarity_search(
     query: str,
-    assistant_id: str = "default",
     k: int = 4,
 ) -> list[dict]:
     settings = get_settings()
     target = _collection_name()
     ensure_collection_exists(target)
-    assistant_filter = models.Filter(
-        must=[
-            models.FieldCondition(
-                key=ASSISTANT_ID_PAYLOAD_KEY,
-                match=models.MatchValue(value=assistant_id),
-            )
-        ]
-    )
     started_at = time.perf_counter()
 
     try:
@@ -275,13 +302,11 @@ def similarity_search(
                 models.Prefetch(
                     query=dense_query,
                     using=settings.qdrant_dense_vector_name,
-                    filter=assistant_filter,
                     limit=max(k, settings.rag_dense_candidate_count),
                 ),
                 models.Prefetch(
                     query=make_bm25_document(query),
                     using=settings.qdrant_bm25_vector_name,
-                    filter=assistant_filter,
                     limit=max(k, settings.rag_bm25_candidate_count),
                 ),
             ],
@@ -292,8 +317,7 @@ def similarity_search(
         )
     except Exception as exc:
         logger.exception(
-            "Hybrid retrieval failed assistant_id=%s error_type=%s",
-            assistant_id,
+            "Hybrid retrieval failed error_type=%s",
             exc.__class__.__name__,
         )
         raise
@@ -308,9 +332,11 @@ def similarity_search(
                 "score": point.score,
             }
         )
+    entity_terms = _query_entity_terms(query)
+    if entity_terms:
+        results = [item for item in results if _matches_entity_terms(item, entity_terms)]
     logger.info(
-        "Hybrid retrieval completed assistant_id=%s result_count=%s duration_ms=%.1f",
-        assistant_id,
+        "Hybrid retrieval completed result_count=%s duration_ms=%.1f",
         len(results),
         (time.perf_counter() - started_at) * 1000,
     )

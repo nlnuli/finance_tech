@@ -55,6 +55,7 @@ def import_one_file(source_file: Path, assistant_id: str) -> int:
         raise
 
     file_record = save_file_record(
+        user_id="default",
         assistant_id=assistant_id,
         original_name=source_file.name,
         saved_name=saved_name,
@@ -68,6 +69,7 @@ def import_one_file(source_file: Path, assistant_id: str) -> int:
         filename=source_file.name,
         assistant_id=assistant_id,
         file_id=file_record["id"],
+        user_id=str(file_record.get("user_id") or "default"),
     )
     add_chunks_to_vectorstore(chunks)
 
