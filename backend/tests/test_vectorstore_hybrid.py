@@ -155,6 +155,7 @@ class HybridSearchTests(unittest.TestCase):
             results = vectorstore.similarity_search(
                 "AAPL 2025 net sales",
                 k=4,
+                user_id="user-1",
             )
 
         query_kwargs = client.query_points.call_args.kwargs
@@ -165,10 +166,60 @@ class HybridSearchTests(unittest.TestCase):
         self.assertEqual(bm25_prefetch.using, "bm25")
         self.assertIsInstance(bm25_prefetch.query, models.Document)
         for prefetch in query_kwargs["prefetch"]:
-            self.assertIsNone(prefetch.filter)
+            self.assertIsNotNone(prefetch.filter)
             self.assertEqual(prefetch.limit, 20)
+        self.assertEqual(dense_prefetch.filter, bm25_prefetch.filter)
+        conditions = dense_prefetch.filter.should
+        visible_user_ids = {
+            condition.match.value
+            for condition in conditions
+            if isinstance(condition, models.FieldCondition)
+        }
+        self.assertEqual(visible_user_ids, {"default", "user-1"})
+        self.assertTrue(
+            any(
+                isinstance(condition, models.IsEmptyCondition)
+                for condition in conditions
+            )
+        )
         self.assertEqual(results[0]["score"], 0.75)
         self.assertEqual(results[0]["metadata"]["file_id"], 10)
+
+    def test_default_user_only_sees_shared_and_legacy_chunks(self):
+        visibility_filter = vectorstore._visible_user_filter("default")
+        conditions = visibility_filter.should
+        visible_user_ids = {
+            condition.match.value
+            for condition in conditions
+            if isinstance(condition, models.FieldCondition)
+        }
+
+        self.assertEqual(visible_user_ids, {"default"})
+        self.assertEqual(
+            sum(
+                isinstance(condition, models.IsEmptyCondition)
+                for condition in conditions
+            ),
+            1,
+        )
+
+    def test_uses_request_tenant_when_user_id_is_not_explicit(self):
+        with patch.object(
+            vectorstore,
+            "get_current_user_id",
+            return_value="user-from-context",
+        ):
+            visibility_filter = vectorstore._visible_user_filter()
+
+        visible_user_ids = {
+            condition.match.value
+            for condition in visibility_filter.should
+            if isinstance(condition, models.FieldCondition)
+        }
+        self.assertEqual(
+            visible_user_ids,
+            {"default", "user-from-context"},
+        )
 
     def test_filters_mismatched_ticker_results(self):
         settings = make_settings()

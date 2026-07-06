@@ -10,6 +10,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 from .config import get_settings
+from .tenant_context import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ ASSISTANT_ID_PAYLOAD_KEY = "metadata.assistant_id"
 USER_ID_PAYLOAD_KEY = "metadata.user_id"
 FILE_ID_PAYLOAD_KEY = "metadata.file_id"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+SHARED_USER_ID = "default"
 TICKER_ALIASES = {
     "AAPL": ("aapl", "apple", "苹果"),
     "AMZN": ("amzn", "amazon", "亚马逊"),
@@ -258,6 +260,24 @@ def _file_filter(file_id: int) -> models.Filter:
     )
 
 
+def _visible_user_filter(user_id: str | None = None) -> models.Filter:
+    current_user_id = user_id or get_current_user_id() or SHARED_USER_ID
+    visible_user_ids = {SHARED_USER_ID, current_user_id}
+    conditions: list[models.Condition] = [
+        models.FieldCondition(
+            key=USER_ID_PAYLOAD_KEY,
+            match=models.MatchValue(value=visible_user_id),
+        )
+        for visible_user_id in sorted(visible_user_ids)
+    ]
+    conditions.append(
+        models.IsEmptyCondition(
+            is_empty=models.PayloadField(key=USER_ID_PAYLOAD_KEY),
+        )
+    )
+    return models.Filter(should=conditions)
+
+
 def delete_file_chunks(
     user_id: str,
     file_id: int,
@@ -288,11 +308,13 @@ def count_file_chunks(
 def similarity_search(
     query: str,
     k: int = 4,
+    user_id: str | None = None,
 ) -> list[dict]:
     settings = get_settings()
     target = _collection_name()
     ensure_collection_exists(target)
     started_at = time.perf_counter()
+    visibility_filter = _visible_user_filter(user_id)
 
     try:
         dense_query = get_embeddings().embed_query(query)
@@ -302,11 +324,13 @@ def similarity_search(
                 models.Prefetch(
                     query=dense_query,
                     using=settings.qdrant_dense_vector_name,
+                    filter=visibility_filter,
                     limit=max(k, settings.rag_dense_candidate_count),
                 ),
                 models.Prefetch(
                     query=make_bm25_document(query),
                     using=settings.qdrant_bm25_vector_name,
+                    filter=visibility_filter,
                     limit=max(k, settings.rag_bm25_candidate_count),
                 ),
             ],
