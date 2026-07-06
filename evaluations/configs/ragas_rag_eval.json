@@ -1,0 +1,11 @@
+{
+  "source_paths": [],
+  "case_count": 30,
+  "assistant_id": "default",
+  "retrieval_k": 4,
+  "recursion_limit": 8,
+  "case_timeout_seconds": 120,
+  "case_output_path": "evaluations/datasets/ragas_generated_cases.jsonl",
+  "result_output_dir": "evaluations/results/ragas_rag_eval",
+  "archive_runs": true
+}
